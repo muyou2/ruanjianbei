@@ -1,0 +1,16 @@
+.env
+.env.local
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/runtime/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+*.pyc
+.DS_Store
