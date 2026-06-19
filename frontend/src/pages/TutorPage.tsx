@@ -11,9 +11,10 @@ export default function TutorPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<'socratic' | 'explain'>('socratic')
+  const [evidence, setEvidence] = useState<{ sufficient: boolean; message: string } | null>(null)
   const ask = async () => {
     const q = question.trim(); if (!q || loading) return
-    setQuestion(''); setLoading(true)
+    setQuestion(''); setLoading(true); setEvidence(null)
     setMessages(prev => [...prev, { role: 'user', content: q }, { role: 'assistant', content: '', citations: [] }])
     try {
       await consumeSSE('/api/tutor/chat', { question: q, mode }, (event, data) => {
@@ -23,6 +24,7 @@ export default function TutorPage() {
           if (event === 'delta') last.content += data.text
           next[next.length - 1] = last; return next
         })
+        if (event === 'evidence') setEvidence(data)
       })
     } finally { setLoading(false) }
   }
@@ -30,9 +32,10 @@ export default function TutorPage() {
     <>
       <PageHeader eyebrow="RAG Tutor" title="有依据的即时答疑，而不是凭空作答" description="助教先检索课程知识库，再组织回答。每次回答都会展示参考片段与相关度，证据不足时明确提示。" />
       <Card className="mx-auto max-w-5xl p-0">
-        <div className="flex min-h-[60vh] flex-col">
+          <div className="flex min-h-[60vh] flex-col">
           <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 text-white"><BookOpenCheck /></div><div><div className="font-black">Python 课程智能助教</div><div className="text-xs text-emerald-600">● 知识库已连接</div></div></div><div className="flex rounded-xl bg-slate-100 p-1 text-xs font-bold"><button onClick={() => setMode('socratic')} className={`rounded-lg px-3 py-2 ${mode === 'socratic' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>启发式引导</button><button onClick={() => setMode('explain')} className={`rounded-lg px-3 py-2 ${mode === 'explain' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>直接讲解</button></div></div>
           <div className="flex-1 space-y-5 p-5 lg:p-7">
+            {evidence && <div className={`rounded-2xl p-3 text-xs font-bold ${evidence.sufficient ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{evidence.message}</div>}
             {messages.length === 0 && <div className="mx-auto max-w-xl py-16 text-center"><div className="text-4xl">💬</div><h3 className="mt-3 font-black">从一个真实问题开始</h3><p className="mt-2 text-sm leading-6 text-slate-500">{mode === 'socratic' ? '启发式模式会通过分层提问和提示帮你自己推导答案。' : '直接讲解模式会给出清晰解释、示例与练习建议。'}</p></div>}
             {messages.map((message, i) => <div key={i} className={message.role === 'user' ? 'ml-auto max-w-2xl' : 'max-w-3xl'}>
               <div className={message.role === 'user' ? 'rounded-3xl rounded-br-md bg-slate-950 px-5 py-4 text-sm text-white' : 'rounded-3xl rounded-bl-md bg-violet-50 px-5 py-4'}>

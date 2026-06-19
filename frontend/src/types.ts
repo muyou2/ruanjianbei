@@ -1,5 +1,8 @@
 export type Profile = {
   id?: number
+  demo_key?: string | null
+  display_name: string
+  is_active?: boolean
   major: string
   grade: string
   knowledge_level: string

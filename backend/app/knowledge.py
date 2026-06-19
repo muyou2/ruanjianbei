@@ -126,6 +126,7 @@ class KnowledgeStore:
                         "title": metadata.get("title", "课程资料"),
                         "content": content,
                         "score": round(max(0.0, 1.0 - float(distance)), 4),
+                        "retrieval_backend": self.backend,
                     }
                 )
             return items
@@ -141,6 +142,7 @@ class KnowledgeStore:
                     "title": chunk["title"],
                     "content": chunk["content"],
                     "score": round(max(0.0, score), 4),
+                    "retrieval_backend": self.backend,
                 }
             )
         return sorted(scored, key=lambda item: item["score"], reverse=True)[:top_k]

@@ -26,7 +26,7 @@ export default function KnowledgePage() {
   const remove = async (id: number) => { await api(`/api/documents/${id}`, { method: 'DELETE' }); await load() }
   return (
     <>
-      <PageHeader eyebrow="Knowledge Agent" title="让每一次生成，都有课程资料作为锚点" description="上传 TXT、Markdown 或可提取文本的 PDF。系统自动切块、向量化并在生成与答疑时展示引用。" />
+      <PageHeader eyebrow="Knowledge Agent" title="让每一次生成，都有课程资料作为锚点" description="当前采用 MVP Hashing 向量 + Chroma 持久化检索，真实执行切块、向量写入与 top-k 查询，但不宣传为 sentence-transformers 强语义检索。" />
       <div className="grid gap-6 xl:grid-cols-[.9fr_1.1fr]">
         <div className="space-y-6">
           <Card>
@@ -47,9 +47,9 @@ export default function KnowledgePage() {
             </div>
           </Card>
           {benchmark?.available && <Card>
-            <div className="flex items-center justify-between"><div><div className="text-xs font-bold text-cyan-600">开放数据集</div><h3 className="mt-1 font-black">{benchmark.name}</h3></div><span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">{benchmark.license}</span></div>
+            <div className="flex items-center justify-between"><div><div className="text-xs font-bold text-slate-400">扩展分析 Demo（非核心闭环）</div><h3 className="mt-1 font-black">{benchmark.name}</h3></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{benchmark.license}</span></div>
             <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.records}</div><div className="text-[10px] text-slate-400">记录</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.features}</div><div className="text-[10px] text-slate-400">特征</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.average_final_grade}</div><div className="text-[10px] text-slate-400">平均成绩/20</div></div></div>
-            <p className="mt-3 text-xs leading-5 text-slate-500">来源：{benchmark.source}。用于学习分析基准与界面验证，不参与自动权益决策。</p>
+            <p className="mt-3 text-xs leading-5 text-slate-500">来源：{benchmark.source}。该数据不是本系统真实高校 Python 学习数据，仅保留为扩展分析 Demo，不参与当前学生推荐、画像或测评。</p>
           </Card>}
         </div>
         <Card>

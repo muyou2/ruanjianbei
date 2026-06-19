@@ -6,6 +6,8 @@
 | GET | `/api/config/status` | 模型与向量后端状态 |
 | GET | `/api/analytics/overview` | 个人学习信号与开放数据基准 |
 | GET/POST/PUT | `/api/profiles` | 查询、生成、更新画像 |
+| GET | `/api/profiles/all` | 查询全部演示/自定义画像 |
+| POST | `/api/profiles/select` | 切换当前学习者 |
 | GET/POST | `/api/documents` | 列表、上传资料 |
 | DELETE | `/api/documents/{id}` | 删除资料 |
 | POST | `/api/knowledge/search` | 课程片段检索 |

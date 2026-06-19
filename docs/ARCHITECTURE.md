@@ -17,6 +17,20 @@ flowchart LR
   LLM --> M[Mock Fallback]
 ```
 
-资源生成使用 LangGraph 风格状态对象，但 MVP 不强依赖 LangGraph：状态依次经过知识检索、路径规划、并行生成和事实审校节点，后续可直接替换为真实 StateGraph。
+资源生成使用 LangGraph 风格状态对象，但 MVP 不强依赖 LangGraph。当前保存并展示以下真实状态：
+
+```text
+profile_loaded
+→ knowledge_retrieved
+→ plan_generated
+→ resources_generated
+→ quiz_generated
+→ review_completed
+→ saved
+```
+
+资源包同时保存 `profile_snapshot`、`citations`、`workflow` 和 `agent_outputs`，可以追溯每类资源由哪个 Agent 生成。
 
 长任务通过 SSE 返回 `progress`、`citations`、`resource`、`review` 和 `done` 事件，避免页面长时间白屏。
+
+当前 Chroma 使用本地 Hashing 向量，属于 MVP 检索；sentence-transformers 尚未接入。

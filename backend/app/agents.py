@@ -7,301 +7,461 @@ from .llm_service import llm_service
 from .schemas import QuizQuestion, StudentProfile
 
 
-def infer_profile(text: str) -> StudentProfile:
-    major_match = re.search(r"([\u4e00-\u9fffA-Za-z]+专业)", text)
-    grade_match = re.search(r"(大[一二三四五]|研[一二三]|高职|本科|研究生)", text)
-    weak_markers = ["不懂", "薄弱", "不会", "困难", "欠缺", "不熟", "易错"]
-    clauses = re.split(r"[，。；;\n]", text)
-    weak_points = [
-        re.sub(r"(不太懂|不懂|薄弱|不会|困难|欠缺|不熟|易错)", "", clause).strip()
-        for clause in clauses
-        if any(marker in clause for marker in weak_markers)
+DEMO_PROFILES = {
+    "demo_basic": StudentProfile(
+        demo_key="demo_basic",
+        display_name="小林 · 基础薄弱型",
+        major="计算机专业",
+        grade="大一",
+        knowledge_level="基础薄弱",
+        learning_goal="补齐 Python 基础并能独立完成简单数据处理",
+        weak_points=["变量与数据类型", "函数参数", "Pandas 基础操作"],
+        learning_style="循序渐进、低认知负荷",
+        resource_preference=["图解", "最小代码示例", "分步练习"],
+        mistake_history=["容易混淆列表索引与字典键"],
+        source_text="我是计算机专业大一学生，Python 基础比较薄弱，变量、函数参数和 Pandas 都不熟，希望从图解和最小代码例子开始学习。",
+        is_active=False,
+    ),
+    "demo_practice": StudentProfile(
+        demo_key="demo_practice",
+        display_name="小周 · 实践导向型",
+        major="电子信息专业",
+        grade="大二",
+        knowledge_level="有编程基础",
+        learning_goal="通过真实数据项目掌握 Python 数据分析",
+        weak_points=["Pandas 数据清洗", "异常值处理", "项目结构"],
+        learning_style="项目驱动、边做边学",
+        resource_preference=["代码案例", "项目实战", "调试任务"],
+        mistake_history=["数据类型转换时忽略缺失值"],
+        source_text="我是电子信息专业大二学生，有 Python 基础，但 Pandas 数据清洗和项目组织不熟，希望通过代码案例和项目实战学习。",
+        is_active=False,
+    ),
+    "demo_exam": StudentProfile(
+        demo_key="demo_exam",
+        display_name="小陈 · 考试复习型",
+        major="软件工程专业",
+        grade="大二",
+        knowledge_level="基础一般",
+        learning_goal="系统复习 Python 课程并提高期末考试正确率",
+        weak_points=["函数作用域", "面向对象", "Pandas 常用 API"],
+        learning_style="考点归纳、错题复盘",
+        resource_preference=["知识清单", "对比表格", "练习题"],
+        mistake_history=["函数作用域判断题错误", "DataFrame 选列语法错误"],
+        source_text="我是软件工程专业大二学生，准备 Python 期末考试，基础一般，函数作用域、面向对象和 Pandas API 容易错，希望通过考点和题目复习。",
+        is_active=False,
+    ),
+}
+
+
+def _extract_major(text: str) -> str:
+    match = re.search(r"(计算机|软件工程|电子信息|人工智能|数据科学|自动化|通信工程)[^，。；\n]{0,6}专业", text)
+    if match:
+        return match.group(0).replace("我是", "")
+    generic = re.search(r"([\u4e00-\u9fffA-Za-z]{2,12}专业)", text)
+    return re.sub(r"^(我是|我学的是|目前是)", "", generic.group(1)) if generic else "计算机相关专业"
+
+
+def _extract_weak_points(text: str) -> list[str]:
+    known = [
+        "变量", "数据类型", "列表", "字典", "循环", "函数", "函数参数", "函数作用域",
+        "面向对象", "异常处理", "文件操作", "NumPy", "Pandas", "数据清洗",
+        "缺失值", "异常值", "数据分析项目", "项目结构", "可视化",
     ]
-    preference = []
+    weakness_words = ["不熟", "不懂", "不会", "薄弱", "容易错", "易错", "一般", "欠缺"]
+    weak = []
+    for clause in re.split(r"[，。；;\n]", text):
+        if any(word in clause for word in weakness_words):
+            for topic in known:
+                if topic.lower() in clause.lower() and topic not in weak:
+                    weak.append(topic)
+    return weak or ["函数与数据处理"]
+
+
+def infer_profile(text: str, display_name: str = "自定义学习者") -> StudentProfile:
+    grade_match = re.search(r"(大[一二三四五]|研[一二三]|高职|本科|研究生)", text)
+    preferences = []
     for keyword, label in [
         ("图", "图解"),
         ("代码", "代码案例"),
-        ("视频", "视频"),
-        ("练习", "练习题"),
         ("项目", "项目实战"),
-        ("文档", "讲义"),
+        ("练习", "练习题"),
+        ("考试", "知识清单"),
+        ("视频", "视频讲解"),
+        ("对比", "对比表格"),
     ]:
-        if keyword in text and label not in preference:
-            preference.append(label)
-    level = "入门"
-    if any(word in text for word in ["有基础", "学过", "中等", "进阶"]):
-        level = "基础"
-    if any(word in text for word in ["熟练", "项目经验", "高级"]):
-        level = "进阶"
-    style = "循序渐进"
-    if "图" in text:
-        style = "视觉化与案例驱动"
-    elif "实践" in text or "项目" in text:
-        style = "实践驱动"
+        if keyword in text and label not in preferences:
+            preferences.append(label)
+    if any(word in text for word in ["零基础", "很薄弱", "基础薄弱", "刚开始"]):
+        level = "基础薄弱"
+    elif any(word in text for word in ["有基础", "学过", "项目经验", "熟练"]):
+        level = "有编程基础"
+    else:
+        level = "基础一般"
+    if "考试" in text or "复习" in text:
+        style = "考点归纳、错题复盘"
+    elif "项目" in text or "实践" in text:
+        style = "项目驱动、边做边学"
+    elif "图" in text:
+        style = "视觉化、循序渐进"
+    else:
+        style = "循序渐进"
+    clauses = [clause.strip() for clause in re.split(r"[。；;\n]", text) if clause.strip()]
+    goal = next(
+        (clause for clause in clauses if any(word in clause for word in ["希望", "目标", "想要", "掌握", "准备"])),
+        "掌握 Python 程序设计与数据分析",
+    )
     return StudentProfile(
-        major=re.sub(r"^(我是|我学的是|目前是)", "", major_match.group(1)) if major_match else "计算机相关专业",
+        display_name=display_name,
+        major=_extract_major(text),
         grade=grade_match.group(1) if grade_match else "大学生",
         knowledge_level=level,
-        learning_goal=next(
-            (c.strip() for c in clauses if any(k in c for k in ["希望", "目标", "想要", "掌握"])),
-            "掌握 Python 并完成数据分析项目",
-        ),
-        weak_points=weak_points or ["函数与面向对象的综合运用"],
+        learning_goal=goal,
+        weak_points=_extract_weak_points(text),
         learning_style=style,
-        resource_preference=preference or ["图解", "代码案例"],
+        resource_preference=preferences or ["图解", "代码案例"],
         mistake_history=[],
         source_text=text,
     )
 
 
-class ProfileAgent:
-    name = "画像分析师"
+def profile_strategy(profile: dict[str, Any]) -> dict[str, str]:
+    style = profile.get("learning_style", "")
+    preferences = profile.get("resource_preference", [])
+    if "考试" in style or "知识清单" in preferences:
+        return {
+            "type": "exam",
+            "label": "考试复习型",
+            "sequence": "考点诊断 → 高频易错对比 → 限时练习 → 错题复盘",
+            "tone": "突出考点、易错项、判断依据和答题速度",
+            "task": "完成一组限时题，并整理一页错题清单",
+        }
+    if "项目" in style or "项目实战" in preferences:
+        return {
+            "type": "practice",
+            "label": "实践导向型",
+            "sequence": "项目任务 → 必要概念 → 分步实现 → 调试与复盘",
+            "tone": "用真实数据任务带动概念学习，强调可运行代码",
+            "task": "完成一个可复现的数据清洗报告",
+        }
+    return {
+        "type": "basic",
+        "label": "基础巩固型",
+        "sequence": "概念图解 → 最小示例 → 模仿练习 → 小步测验",
+        "tone": "降低认知负荷，解释术语并避免一次引入过多概念",
+        "task": "修改一个最小示例并说出每一步输入输出",
+    }
 
-    async def run(self, text: str) -> StudentProfile:
-        fallback = infer_profile(text)
+
+def citations_text(citations: list[dict[str, Any]]) -> str:
+    return "\n\n".join(
+        f"[{index + 1}] {item['title']}：{item['content'][:420]}"
+        for index, item in enumerate(citations)
+    )
+
+
+class ProfileAgent:
+    name = "ProfileAgent"
+    display_name = "画像分析师"
+
+    async def run(self, text: str, display_name: str = "自定义学习者") -> StudentProfile:
+        fallback = infer_profile(text, display_name)
         data = await llm_service.structured(
-            "你是学生画像分析师，提取八维高校学生学习画像。",
-            f"从以下描述提取画像：{text}",
+            "你是高校学生画像分析师。只能根据用户原文提取八维画像，不得补造经历。",
+            f"用户原文：{text}",
             fallback.model_dump(mode="json"),
         )
         allowed = fallback.model_dump()
-        allowed.update({k: v for k, v in data.items() if k in allowed and v not in (None, "")})
+        allowed.update({key: value for key, value in data.items() if key in allowed and value not in (None, "")})
+        allowed["display_name"] = display_name
+        allowed["source_text"] = text
         return StudentProfile(**allowed)
 
 
 class KnowledgeAgent:
-    name = "知识检索员"
+    name = "KnowledgeAgent"
+    display_name = "知识检索员"
 
     async def run(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         return knowledge_store.search(query, top_k)
 
 
-def citations_text(citations: list[dict[str, Any]]) -> str:
-    return "\n\n".join(f"[{i + 1}] {c['title']}：{c['content'][:420]}" for i, c in enumerate(citations))
-
-
 class PlannerAgent:
-    name = "路径规划师"
+    name = "PlannerAgent"
+    display_name = "路径规划师"
 
     async def run(self, topic: str, profile: dict, citations: list[dict]) -> str:
+        strategy = profile_strategy(profile)
         weak = "、".join(profile.get("weak_points", [])) or "暂无"
+        preference = "、".join(profile.get("resource_preference", []))
         fallback = f"""# {topic} 个性化学习路径
 
-> 学习者基础：{profile.get('knowledge_level', '入门')} · 薄弱点：{weak}
+**适配对象**：{profile.get('display_name')} · {strategy['label']}
 
-1. **概念预热（20 分钟）**：用一张知识地图理解本主题在 Python 课程中的位置。
-2. **核心讲解（35 分钟）**：阅读讲义并运行每个最小示例，记录输入、过程和输出。
-3. **刻意练习（30 分钟）**：先完成选择与判断，再完成简答和代码题。
-4. **项目迁移（45 分钟）**：把示例数据替换为自己的数据，完成一次清洗与分析。
-5. **复盘纠错（15 分钟）**：根据评估结果更新薄弱点，次日进行间隔复习。
+**当前基础**：{profile.get('knowledge_level')}
 
-**完成标准**：能独立解释关键概念、运行代码并对结果做出合理判断。"""
+**重点补强**：{weak}
+**资源偏好**：{preference}
+
+## 推荐顺序
+{strategy['sequence']}
+
+1. **诊断与先备检查（15 分钟）**：围绕 {weak} 完成 3 个最小问题，确认真正卡点。
+2. **核心学习（30 分钟）**：按“{strategy['tone']}”阅读讲义和思维导图。
+3. **针对性练习（25 分钟）**：先做与薄弱点直接相关的选择、判断和简答题。
+4. **代码任务（40 分钟）**：{strategy['task']}。
+5. **复盘（10 分钟）**：记录错误原因；测评结果将写回学生画像。
+
+**完成标准**：能够解释关键步骤、独立修改代码，并在测评中说明错误原因。"""
         return await llm_service.generate(
-            "你是个性化学习路径规划智能体。输出清晰 Markdown，内容必须适配画像。",
-            f"主题：{topic}\n画像：{profile}\n参考资料：\n{citations_text(citations)}",
+            "你是个性化学习路径智能体。必须显式使用画像、薄弱点、偏好和知识库证据。",
+            f"主题：{topic}\n画像：{profile}\n策略：{strategy}\n知识库：{citations_text(citations)}",
             fallback,
         )
 
 
 class ResourceAgent:
-    name = "课程讲义师"
+    name = "ResourceAgent"
+    display_name = "课程讲义师"
 
     async def run(self, topic: str, profile: dict, citations: list[dict]) -> dict[str, str]:
+        strategy = profile_strategy(profile)
+        weak = "、".join(profile.get("weak_points", []))
+        source_names = "、".join(dict.fromkeys(item["title"] for item in citations)) or "无可用来源"
         fallback = f"""# {topic} 个性化讲义
 
-## 为什么要学
-Python 的价值不只是语法，而是把问题拆成可执行步骤。学习本主题时，建议采用“概念—示例—修改—复盘”的循环。
+> 学习者：{profile.get('display_name')}｜策略：{strategy['label']}｜重点：{weak}
+
+## 本次目标
+- 理解数据清洗的输入、处理步骤和输出。
+- 能针对 `{weak}` 识别常见错误。
+- 按照“{strategy['sequence']}”完成练习。
 
 ## 核心方法
-1. 明确数据或对象的类型与结构。
-2. 使用函数封装重复逻辑，保持输入和输出清晰。
-3. 对边界情况使用异常处理和验证。
-4. 使用小样例验证，再扩展到真实项目。
+1. 先使用 `head()`、`info()` 和缺失值统计理解数据。
+2. 明确每个字段的数据类型，再决定转换、删除或填充。
+3. 对缺失值和异常值保留处理理由，不能机械删除。
+4. 每次变换后检查行数、列数和关键统计量。
 
-## 学习提示
-结合你的偏好，先看结构图，再逐行运行代码。遇到报错时先读异常类型和最后一行，而不是立即复制答案。
+## 针对你的学习建议
+{strategy['tone']}。优先使用你偏好的“{'、'.join(profile.get('resource_preference', []))}”形式。
 
-## 拓展阅读
-- Python 官方教程中的数据结构与函数章节
-- NumPy 快速入门
-- Pandas “10 minutes to pandas”
-
-> 本讲义由知识库片段约束生成，关键结论请结合下方参考资料复核。"""
+## 证据来源
+本讲义检索并参考：{source_names}。未被知识库覆盖的扩展结论需要人工核验。"""
         lecture = await llm_service.generate(
-            "你是高校 Python 课程讲义智能体，使用 Markdown，避免编造来源。",
-            f"主题：{topic}\n画像：{profile}\n资料：{citations_text(citations)}",
+            "你是 Python 课程讲义智能体。必须适配学生画像，并区分知识库证据与扩展建议。",
+            f"主题：{topic}\n画像：{profile}\n策略：{strategy}\n资料：{citations_text(citations)}",
             fallback,
         )
         ppt = f"""# 《{topic}》PPT 大纲
 
 ---
-## 1. 学习目标
-- 建立概念框架
-- 能解释关键步骤
-- 能完成一个可运行案例
+## 1. 学习者与目标
+- {profile.get('display_name')}：{strategy['label']}
+- 当前薄弱点：{weak}
+- 学习顺序：{strategy['sequence']}
 
 ---
-## 2. 先备知识
-- Python 基础语法
-- 容器与函数
-- 调试与异常阅读
+## 2. 数据清洗问题地图
+- 数据类型
+- 缺失值
+- 重复值
+- 异常值
 
 ---
-## 3. 核心概念
-- 概念定义
-- 典型使用场景
-- 常见误区
+## 3. 关键 API 与判断依据
+- `info()` / `isna()` / `drop_duplicates()`
+- 何时删除、何时填充
+- 每一步如何验证结果
 
 ---
-## 4. 代码演示
-- 最小可运行示例
-- 逐步改造
-- 结果解释
+## 4. 个性化演示
+- 按“{'、'.join(profile.get('resource_preference', []))}”组织
+- 针对 {weak} 设置易错提醒
 
 ---
-## 5. 课堂练习与复盘
-- 四类练习
-- 错因分析
-- 下一步学习建议"""
+## 5. 练习、项目与复盘
+- 四类题目
+- {strategy['task']}
+- 测评结果写回画像"""
         return {"lecture": lecture, "ppt_outline": ppt}
 
 
 class QuizAgent:
-    name = "测评设计师"
+    name = "QuizAgent"
+    display_name = "测评设计师"
 
-    async def run(self, topic: str) -> list[dict[str, Any]]:
+    async def run(self, topic: str, profile: dict, citations: list[dict]) -> list[dict[str, Any]]:
+        weak = profile.get("weak_points", [])
+        focus = weak[0] if weak else "Pandas 数据清洗"
         questions = [
             QuizQuestion(
                 id="q1",
                 type="single_choice",
-                question=f"学习“{topic}”时，验证代码逻辑最稳妥的第一步是什么？",
-                options=["直接处理全部真实数据", "使用最小样例验证输入输出", "忽略异常继续运行", "只阅读代码不执行"],
-                answer="使用最小样例验证输入输出",
-                explanation="最小样例能降低调试复杂度，快速确认核心逻辑。",
-                knowledge_point="调试与验证",
+                question=f"处理“{topic}”数据前，最合理的第一步是什么？",
+                options=["直接删除所有空值", "查看数据结构、类型和缺失情况", "立即绘图", "只读取前一行"],
+                answer="查看数据结构、类型和缺失情况",
+                explanation="清洗策略必须建立在对字段类型、缺失和数据规模的理解上。",
+                knowledge_point="数据理解与检查",
             ),
             QuizQuestion(
                 id="q2",
                 type="true_false",
-                question="函数应尽量让输入和输出清晰，并减少隐藏的全局状态。",
+                question="发现异常值后应该立即删除，因为异常值一定是错误数据。",
                 options=["正确", "错误"],
-                answer="正确",
-                explanation="清晰的数据流有助于测试、复用和排错。",
-                knowledge_point="函数设计",
+                answer="错误",
+                explanation="异常值可能是录入错误，也可能是真实罕见现象，需要回到数据来源核验。",
+                knowledge_point="异常值处理",
             ),
             QuizQuestion(
                 id="q3",
                 type="short_answer",
-                question="请说明列表与字典在组织数据时的主要区别，并各举一个使用场景。",
-                answer="列表按顺序保存元素，适合序列；字典按键映射值，适合具名字段或快速查找。",
-                explanation="应同时提及顺序/索引与键值映射。",
-                knowledge_point="Python 数据结构",
+                question=f"结合你的薄弱点“{focus}”，说明 Pandas 处理缺失值时为什么不能总是直接删除整行。",
+                answer="删除可能造成样本损失和偏差，应结合字段含义、缺失比例和缺失机制选择删除、填充或保留。",
+                explanation="关键词包括样本损失、偏差、字段含义、缺失比例、填充。",
+                knowledge_point="缺失值处理",
             ),
             QuizQuestion(
                 id="q4",
                 type="code",
-                question="编写函数 summarize(numbers)，返回数字列表的数量、平均值和最大值；空列表应返回 None。",
-                answer="def summarize(numbers):\n    if not numbers:\n        return None\n    return {'count': len(numbers), 'mean': sum(numbers)/len(numbers), 'max': max(numbers)}",
-                explanation="考查函数、条件判断、容器和聚合操作。",
-                knowledge_point="函数与数据处理",
+                question="补全代码：读取 data.csv，查看缺失值数量，删除重复行，并用年龄列中位数填充缺失值。",
+                answer="df = pd.read_csv('data.csv')\nprint(df.isna().sum())\ndf = df.drop_duplicates()\ndf['age'] = df['age'].fillna(df['age'].median())",
+                explanation="MVP 仅检查关键语句，不执行用户代码；最终正确性需要人工核验或安全沙箱。",
+                knowledge_point="Pandas 数据清洗代码",
             ),
         ]
-        return [q.model_dump() for q in questions]
+        return [question.model_dump() for question in questions]
 
 
 class CodeAgent:
-    name = "代码教练"
+    name = "CodeAgent"
+    display_name = "代码教练"
 
-    async def run(self, topic: str) -> str:
-        return f"""# {topic}：数据分析实操
+    async def run(self, topic: str, profile: dict) -> str:
+        strategy = profile_strategy(profile)
+        if strategy["type"] == "basic":
+            task = "代码按读取、检查、清洗三个小步骤展开，每一步打印结果。"
+        elif strategy["type"] == "exam":
+            task = "代码旁标注每个 API 的作用，并整理容易混淆的 `dropna`、`fillna`、`drop_duplicates`。"
+        else:
+            task = "将流程封装为可复用函数，并生成清洗前后对比报告。"
+        return f"""# {topic}：个性化代码实操
+
+**适配策略**：{strategy['label']}
+**本次要求**：{task}
 
 ```python
-from dataclasses import dataclass
-from statistics import mean
+import pandas as pd
 
-@dataclass
-class StudyRecord:
-    topic: str
-    minutes: int
-    score: float
+def clean_student_data(path: str) -> tuple[pd.DataFrame, dict]:
+    df = pd.read_csv(path)
+    before = {{"rows": len(df), "missing": int(df.isna().sum().sum())}}
 
-records = [
-    StudyRecord("Python 基础", 45, 82),
-    StudyRecord("函数", 55, 88),
-    StudyRecord("Pandas", 70, 91),
-]
+    df = df.drop_duplicates()
+    if "age" in df.columns:
+        df["age"] = df["age"].fillna(df["age"].median())
+    if "score" in df.columns:
+        df["score"] = pd.to_numeric(df["score"], errors="coerce")
 
-def build_report(items: list[StudyRecord]) -> dict:
-    if not items:
-        return {{"count": 0, "average_score": 0, "total_minutes": 0}}
-    return {{
-        "count": len(items),
-        "average_score": round(mean(item.score for item in items), 2),
-        "total_minutes": sum(item.minutes for item in items),
-        "best_topic": max(items, key=lambda item: item.score).topic,
-    }}
-
-print(build_report(records))
+    after = {{"rows": len(df), "missing": int(df.isna().sum().sum())}}
+    return df, {{"before": before, "after": after}}
 ```
 
-## 动手任务
-1. 增加 `weak_point` 字段并筛选低于 85 分的记录。
-2. 将结果保存为 CSV。
-3. 使用 Pandas 绘制学习时长与成绩的关系图。
+## 实操任务
+{strategy['task']}。请记录每个清洗决策的理由，不要只提交最终代码。
 
-## 预期收获
-把数据结构、函数、类型标注和项目化思维连接起来。"""
+> 代码示例未在服务器执行；运行结果需在本地 Python 环境核验。"""
 
 
 class MindMapAgent:
-    name = "知识图谱师"
+    name = "MindMapAgent"
+    display_name = "知识图谱师"
 
-    async def run(self, topic: str) -> str:
+    async def run(self, topic: str, profile: dict) -> str:
+        weak = profile.get("weak_points", ["数据清洗"])
         return f"""mindmap
   root(({topic}))
-    学习目标
-      理解概念
-      能运行代码
-      能解释结果
-    基础能力
-      数据类型
-      容器
-      函数
-      异常处理
-    数据分析
-      NumPy
-      Pandas
-      数据清洗
-      结果可视化
+    学习者
+      {profile.get('display_name')}
+      {profile_strategy(profile)['label']}
+    当前薄弱点
+      {weak[0]}
+      {weak[1] if len(weak) > 1 else '数据验证'}
+    数据理解
+      字段类型
+      缺失比例
+      重复记录
+    数据清洗
+      类型转换
+      缺失值处理
+      异常值核验
+      去重
+    结果验证
+      行列数量
+      统计摘要
+      清洗日志
     学习闭环
-      最小样例
-      刻意练习
-      项目迁移
-      评估复盘"""
+      代码任务
+      测评
+      错题写回画像"""
 
 
 class ReviewAgent:
-    name = "事实审校员"
+    name = "ReviewAgent"
+    display_name = "事实审校员"
 
-    async def run(self, resources: dict[str, Any], citations: list[dict]) -> dict[str, Any]:
+    async def run(
+        self,
+        resources: dict[str, Any],
+        citations: list[dict],
+        profile: dict[str, Any],
+    ) -> dict[str, Any]:
+        required = ["learning_path", "lecture", "mindmap", "quiz", "code_case", "ppt_outline"]
+        missing = [key for key in required if not resources.get(key)]
         text = str(resources)
-        risky = [word for word in ["保证百分之百", "绝对正确", "无需验证"] if word in text]
-        score = min(100, 68 + len(citations) * 6 - len(risky) * 15)
-        dimensions = {
-            "相关性": min(100, 78 + len(citations) * 4),
-            "事实依据": min(100, 62 + len(citations) * 8),
-            "内容完整": 92 if all(key in resources for key in ["learning_path", "lecture", "quiz", "code_case", "mindmap"]) else 65,
-            "教学适配": 88 if "learning_path" in resources and "quiz" in resources else 70,
-            "内容安全": 100 if not risky else max(40, 100 - len(risky) * 25),
+        absolute_words = [word for word in ["保证百分之百", "绝对正确", "一定能", "无需核验"] if word in text]
+        evidence_insufficient = not citations or max((item.get("score", 0) for item in citations), default=0) < 0.08
+        profile_terms = [
+            profile.get("display_name", ""),
+            profile.get("knowledge_level", ""),
+            *(profile.get("weak_points", [])[:2]),
+            *(profile.get("resource_preference", [])[:2]),
+        ]
+        profile_hits = sum(bool(term and term in text) for term in profile_terms)
+        adapted = profile_hits >= 2
+        needs_human_review = evidence_insufficient or bool(absolute_words) or bool(missing)
+        checks = {
+            "resources_complete": not missing,
+            "knowledge_cited": bool(citations),
+            "evidence_sufficient": not evidence_insufficient,
+            "no_exaggeration": not absolute_words,
+            "profile_adapted": adapted,
+            "human_review_required": needs_human_review,
         }
+        warnings = []
+        if missing:
+            warnings.append(f"资源不完整：缺少 {', '.join(missing)}")
+        if evidence_insufficient:
+            warnings.append("知识库证据不足，需要人工核验")
+        if absolute_words:
+            warnings.append(f"发现绝对化表达：{'、'.join(absolute_words)}")
+        if not adapted:
+            warnings.append("资源对当前学生画像的适配证据不足")
+        score = (
+            (25 if not missing else max(0, 25 - len(missing) * 5))
+            + (25 if not evidence_insufficient else 5)
+            + (20 if not absolute_words else 5)
+            + (20 if adapted else 8)
+            + (10 if resources.get("quiz") else 0)
+        )
         return {
-            "passed": score >= 70,
+            "passed": score >= 70 and not missing and not evidence_insufficient,
             "score": score,
-            "dimensions": dimensions,
+            "status": "通过" if score >= 70 and not needs_human_review else "需要人工核验",
+            "checks": checks,
+            "missing_resources": missing,
             "citation_count": len(citations),
-            "warnings": (["知识库引用较少，部分扩展内容需核验"] if len(citations) < 2 else []) + risky,
-            "safety": "通过",
-            "note": "内容经过来源覆盖、格式完整性与风险措辞检查。",
+            "warnings": warnings,
+            "note": "评分由规则实时计算，不是固定分数。",
         }
 
 
@@ -309,6 +469,9 @@ class ReviewAgent:
 class OrchestratorState:
     topic: str
     profile: dict[str, Any]
+    current_state: str = "profile_loaded"
+    state_history: list[dict[str, Any]] = field(default_factory=list)
     citations: list[dict[str, Any]] = field(default_factory=list)
     resources: dict[str, Any] = field(default_factory=dict)
+    agent_outputs: dict[str, Any] = field(default_factory=dict)
     review: dict[str, Any] = field(default_factory=dict)

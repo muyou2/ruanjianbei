@@ -10,19 +10,50 @@ def _profile_from_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
     row["weak_points"] = json_load(row["weak_points"], [])
     row["resource_preference"] = json_load(row["resource_preference"], [])
     row["mistake_history"] = json_load(row["mistake_history"], [])
+    row["is_active"] = bool(row.get("is_active"))
     return row
 
 
-def get_profile() -> dict[str, Any] | None:
+def get_profile(profile_id: int | None = None, demo_key: str | None = None) -> dict[str, Any] | None:
     with connect() as conn:
-        row = conn.execute("SELECT * FROM profiles ORDER BY id DESC LIMIT 1").fetchone()
+        if profile_id is not None:
+            row = conn.execute("SELECT * FROM profiles WHERE id=?", (profile_id,)).fetchone()
+        elif demo_key is not None:
+            row = conn.execute("SELECT * FROM profiles WHERE demo_key=?", (demo_key,)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM profiles ORDER BY is_active DESC, updated_at DESC, id DESC LIMIT 1"
+            ).fetchone()
     return _profile_from_row(row_to_dict(row))
 
 
-def save_profile(profile: StudentProfile) -> dict[str, Any]:
+def list_profiles() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM profiles ORDER BY is_active DESC, demo_key IS NULL, id"
+        ).fetchall()
+    return [_profile_from_row(dict(row)) for row in rows]
+
+
+def activate_profile(profile_id: int) -> dict[str, Any] | None:
+    with connect() as conn:
+        exists = conn.execute("SELECT id FROM profiles WHERE id=?", (profile_id,)).fetchone()
+        if not exists:
+            return None
+        conn.execute("UPDATE profiles SET is_active=0")
+        conn.execute("UPDATE profiles SET is_active=1, updated_at=? WHERE id=?", (utc_now(), profile_id))
+    return get_profile(profile_id=profile_id)
+
+
+def save_profile(profile: StudentProfile, activate: bool = True) -> dict[str, Any]:
     now = utc_now()
-    current = get_profile()
+    current = get_profile(profile_id=profile.id) if profile.id else (
+        get_profile(demo_key=profile.demo_key) if profile.demo_key else None
+    )
     values = (
+        profile.demo_key,
+        profile.display_name,
+        1 if activate else int(profile.is_active),
         profile.major,
         profile.grade,
         profile.knowledge_level,
@@ -35,22 +66,27 @@ def save_profile(profile: StudentProfile) -> dict[str, Any]:
         now,
     )
     with connect() as conn:
+        if activate:
+            conn.execute("UPDATE profiles SET is_active=0")
         if current:
             conn.execute(
-                """UPDATE profiles SET major=?, grade=?, knowledge_level=?, learning_goal=?,
+                """UPDATE profiles SET demo_key=?, display_name=?, is_active=?,
+                major=?, grade=?, knowledge_level=?, learning_goal=?,
                 weak_points=?, learning_style=?, resource_preference=?, mistake_history=?,
                 source_text=?, updated_at=? WHERE id=?""",
                 (*values, current["id"]),
             )
+            saved_id = current["id"]
         else:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO profiles
-                (major,grade,knowledge_level,learning_goal,weak_points,learning_style,
+                (demo_key,display_name,is_active,major,grade,knowledge_level,learning_goal,weak_points,learning_style,
                  resource_preference,mistake_history,source_text,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (*values[:-1], now, now),
             )
-    return get_profile() or {}
+            saved_id = int(cursor.lastrowid)
+    return get_profile(profile_id=saved_id) or {}
 
 
 def list_documents() -> list[dict[str, Any]]:
@@ -102,9 +138,14 @@ def save_resource(topic: str, profile_id: int | None, content: dict, review: dic
         return int(cursor.lastrowid)
 
 
-def list_resources() -> list[dict[str, Any]]:
+def list_resources(profile_id: int | None = None) -> list[dict[str, Any]]:
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM resources ORDER BY id DESC").fetchall()
+        if profile_id is None:
+            rows = conn.execute("SELECT * FROM resources ORDER BY id DESC").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM resources WHERE profile_id=? ORDER BY id DESC", (profile_id,)
+            ).fetchall()
     result = []
     for row in rows:
         item = dict(row)
@@ -125,18 +166,58 @@ def get_resource(resource_id: int) -> dict[str, Any] | None:
     return item
 
 
-def save_evaluation(resource_id: int, score: float, weak_points: list[str], suggestions: list[str], detail: list[dict]) -> int:
+def save_evaluation(
+    resource_id: int,
+    profile_id: int | None,
+    score: float,
+    weak_points: list[str],
+    suggestions: list[str],
+    detail: list[dict],
+) -> int:
     with connect() as conn:
         cursor = conn.execute(
-            "INSERT INTO evaluations(resource_id,score,weak_points,suggestions,detail,created_at) VALUES(?,?,?,?,?,?)",
-            (resource_id, score, json_dump(weak_points), json_dump(suggestions), json_dump(detail), utc_now()),
+            """INSERT INTO evaluations
+            (resource_id,profile_id,score,weak_points,suggestions,detail,created_at)
+            VALUES(?,?,?,?,?,?,?)""",
+            (
+                resource_id,
+                profile_id,
+                score,
+                json_dump(weak_points),
+                json_dump(suggestions),
+                json_dump(detail),
+                utc_now(),
+            ),
         )
         return int(cursor.lastrowid)
 
 
-def save_message(role: str, content: str, citations: list[dict] | None = None) -> None:
+def latest_evaluation(profile_id: int | None) -> dict[str, Any] | None:
+    if profile_id is None:
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM evaluations WHERE profile_id=? ORDER BY id DESC LIMIT 1",
+            (profile_id,),
+        ).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    item["weak_points"] = json_load(item["weak_points"], [])
+    item["suggestions"] = json_load(item["suggestions"], [])
+    item["detail"] = json_load(item["detail"], [])
+    return item
+
+
+def save_message(
+    role: str,
+    content: str,
+    citations: list[dict] | None = None,
+    profile_id: int | None = None,
+) -> None:
     with connect() as conn:
         conn.execute(
-            "INSERT INTO conversations(role,content,citations,created_at) VALUES(?,?,?,?)",
-            (role, content, json_dump(citations or []), utc_now()),
+            """INSERT INTO conversations(profile_id,role,content,citations,created_at)
+            VALUES(?,?,?,?,?)""",
+            (profile_id, role, content, json_dump(citations or []), utc_now()),
         )

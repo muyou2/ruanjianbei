@@ -7,10 +7,11 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from .agents import KnowledgeAgent, ProfileAgent, citations_text
+from .agents import DEMO_PROFILES, KnowledgeAgent, ProfileAgent, citations_text
 from .analytics import local_learning_signals, public_dataset_overview
 from .config import PROJECT_DIR, get_settings
 from .database import init_db
+from .evaluation import score_question
 from .knowledge import extract_text, knowledge_store, split_text
 from .llm_service import llm_service
 from .orchestrator import orchestrator, sse
@@ -18,9 +19,11 @@ from .repositories import (
     create_document,
     delete_document,
     finish_document,
+    activate_profile,
     get_profile,
     get_resource,
     list_documents,
+    list_profiles,
     list_resources,
     save_evaluation,
     save_message,
@@ -30,6 +33,7 @@ from .schemas import (
     EvaluationSubmitRequest,
     KnowledgeSearchRequest,
     ProfileGenerateRequest,
+    ProfileSelectRequest,
     ResourceGenerateRequest,
     StudentProfile,
     TutorRequest,
@@ -63,10 +67,22 @@ def seed_course() -> None:
         ingest_path(source, source.name)
 
 
+def seed_demo_profiles() -> None:
+    active = get_profile()
+    for demo_key, demo in DEMO_PROFILES.items():
+        if not get_profile(demo_key=demo_key):
+            save_profile(demo, activate=False)
+    if not active:
+        first = get_profile(demo_key="demo_basic")
+        if first:
+            activate_profile(first["id"])
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
     seed_course()
+    seed_demo_profiles()
     yield
 
 
@@ -97,6 +113,7 @@ def config_status():
             "provider": llm_service.provider_name,
             "mock_mode": llm_service.is_mock,
             "vector_backend": knowledge_store.backend,
+            "retrieval_status": "MVP 实现：本地 Hashing 向量 + Chroma 持久化，非 sentence-transformers 强语义模型",
             "course": "Python 基础到数据分析项目实战",
         }
     )
@@ -117,10 +134,32 @@ def profile_get():
     return response(get_profile())
 
 
+@app.get("/api/profiles/all")
+def profiles_all():
+    return response(list_profiles())
+
+
+@app.post("/api/profiles/select")
+def profile_select(payload: ProfileSelectRequest):
+    selected = activate_profile(payload.profile_id)
+    if not selected:
+        raise HTTPException(404, "学生画像不存在")
+    return response(selected, "已切换当前学习者")
+
+
 @app.post("/api/profiles")
 async def profile_generate(payload: ProfileGenerateRequest):
-    profile = await ProfileAgent().run(payload.text)
-    return response(save_profile(profile), "学生画像已生成")
+    before = get_profile()
+    profile = await ProfileAgent().run(payload.text, payload.display_name)
+    saved = save_profile(profile)
+    return response(
+        {
+            "profile": saved,
+            "before": before,
+            "changes": profile_changes(before, saved),
+        },
+        "学生画像已根据输入文本生成并保存",
+    )
 
 
 @app.put("/api/profiles")
@@ -164,7 +203,7 @@ async def knowledge_search(payload: KnowledgeSearchRequest):
 
 @app.post("/api/resources/generate")
 async def resources_generate(payload: ResourceGenerateRequest):
-    profile = get_profile()
+    profile = get_profile(profile_id=payload.profile_id) if payload.profile_id else get_profile()
     if not profile:
         profile = save_profile(StudentProfile(source_text="系统默认学习者画像"))
     return StreamingResponse(
@@ -176,7 +215,8 @@ async def resources_generate(payload: ResourceGenerateRequest):
 
 @app.get("/api/resources")
 def resources_get():
-    return response(list_resources())
+    profile = get_profile()
+    return response(list_resources(profile.get("id") if profile else None))
 
 
 @app.get("/api/resources/{resource_id}")
@@ -189,13 +229,20 @@ def resource_get(resource_id: int):
 
 @app.get("/api/quizzes")
 def quizzes_get(resource_id: int | None = None):
-    item = get_resource(resource_id) if resource_id else (list_resources()[0] if list_resources() else None)
+    profile = get_profile()
+    available = list_resources(profile.get("id") if profile else None)
+    item = get_resource(resource_id) if resource_id else (available[0] if available else None)
     return response({"resource_id": item["id"], "questions": item["content"].get("quiz", [])} if item else None)
 
 
 @app.post("/api/tutor/chat")
 async def tutor_chat(payload: TutorRequest):
+    profile = get_profile()
+    profile_id = profile.get("id") if profile else None
     citations = await KnowledgeAgent().run(payload.question, 4)
+    evidence_sufficient = bool(citations) and max(
+        (item.get("score", 0) for item in citations), default=0
+    ) >= 0.08
     if payload.mode == "socratic":
         fallback = f"""我们先不急着给最终结论。针对“{payload.question}”，请先想一想：
 
@@ -223,8 +270,21 @@ async def tutor_chat(payload: TutorRequest):
         system = "你是 Python 课程助教。直接、清晰地讲解问题，仅依据资料回答；证据不足时明确说明。使用 Markdown。"
 
     async def stream():
-        save_message("user", payload.question)
+        save_message("user", payload.question, profile_id=profile_id)
         yield sse("citations", citations)
+        yield sse(
+            "evidence",
+            {
+                "sufficient": evidence_sufficient,
+                "message": "知识库证据充足" if evidence_sufficient else "知识库证据不足，需要人工核验",
+            },
+        )
+        if not evidence_sufficient:
+            answer = "## 知识库证据不足\n\n当前课程知识库没有检索到足够相关的内容，因此系统不生成确定性答案。请补充课程资料，或由教师/助教人工核验后再回答。"
+            yield sse("delta", {"text": answer})
+            save_message("assistant", answer, citations, profile_id=profile_id)
+            yield sse("done", {"message": "证据不足，已停止扩展生成"})
+            return
         answer = ""
         async for chunk in llm_service.stream(
             system,
@@ -233,14 +293,10 @@ async def tutor_chat(payload: TutorRequest):
         ):
             answer += chunk
             yield sse("delta", {"text": chunk})
-        save_message("assistant", answer, citations)
+        save_message("assistant", answer, citations, profile_id=profile_id)
         yield sse("done", {"message": "回答完成"})
 
     return StreamingResponse(stream(), media_type="text/event-stream")
-
-
-def normalize_answer(value: str) -> str:
-    return "".join(value.lower().split()).replace("。", "")
 
 
 @app.post("/api/evaluations/submit")
@@ -252,56 +308,68 @@ def evaluation_submit(payload: EvaluationSubmitRequest):
     detail = []
     weak_points = []
     earned = 0.0
+    profile = get_profile(profile_id=resource.get("profile_id")) or get_profile()
+    profile_before = dict(profile) if profile else None
     for item in payload.answers:
         question = questions.get(item.question_id)
         if not question:
             continue
-        expected = normalize_answer(question["answer"])
-        actual = normalize_answer(item.answer)
-        if question["type"] in {"single_choice", "true_false"}:
-            correct = actual == expected
-        else:
-            keywords = [word for word in re_split_keywords(question["answer"]) if len(word) > 1]
-            correct = bool(keywords) and sum(word in actual for word in keywords[:5]) >= min(2, len(keywords))
-        earned += 1 if correct else 0
-        if not correct:
+        scored = score_question(question, item.answer)
+        earned += scored["points"]
+        if not scored["correct"]:
             weak_points.append(question["knowledge_point"])
-        detail.append(
-            {
-                "question_id": item.question_id,
-                "correct": correct,
-                "answer": item.answer,
-                "expected": question["answer"],
-                "explanation": question["explanation"],
-            }
-        )
-    score = round((earned / len(questions) * 100) if questions else 0, 1)
+        detail.append(scored)
+    score = round(earned, 1)
     weak_points = list(dict.fromkeys(weak_points))
     suggestions = [
         f"优先复习：{'、'.join(weak_points)}" if weak_points else "当前知识点掌握良好，可进入项目迁移练习",
         "根据错题重新运行对应代码示例，并在 24 小时后进行一次间隔复习",
     ]
-    profile = get_profile()
     if profile and weak_points:
         merged = list(dict.fromkeys(profile["weak_points"] + weak_points))
-        history = profile["mistake_history"] + [f"测评 {score} 分：{'、'.join(weak_points)}"]
-        save_profile(StudentProfile(**{**profile, "weak_points": merged, "mistake_history": history}))
-    evaluation_id = save_evaluation(payload.resource_id, score, weak_points, suggestions, detail)
+        wrong_records = [
+            f"{question['knowledge_point']}：{question['question']}"
+            for question in questions.values()
+            if any(item["question_id"] == question["id"] and not item["correct"] for item in detail)
+        ]
+        history = profile["mistake_history"] + [f"测评 {score} 分"] + wrong_records
+        profile = save_profile(
+            StudentProfile(**{**profile, "weak_points": merged, "mistake_history": history})
+        )
+    evaluation_id = save_evaluation(
+        payload.resource_id,
+        profile.get("id") if profile else None,
+        score,
+        weak_points,
+        suggestions,
+        detail,
+    )
+    profile_after = profile or profile_before
     return response(
         {
             "id": evaluation_id,
             "score": score,
-            "correct_count": int(earned),
-            "total": len(questions),
+            "correct_count": sum(1 for item in detail if item["correct"]),
+            "total": 100,
+            "question_count": len(questions),
             "weak_points": weak_points,
             "suggestions": suggestions,
             "detail": detail,
+            "profile_before": profile_before,
+            "profile_after": profile_after,
+            "profile_changes": profile_changes(profile_before, profile_after),
         },
         "评估完成，学生画像已动态更新",
     )
 
 
-def re_split_keywords(text: str) -> list[str]:
-    import re
-
-    return re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z_]{2,}", normalize_answer(text))
+def profile_changes(before: dict | None, after: dict | None) -> list[dict]:
+    if not after:
+        return []
+    changes = []
+    for field in ["major", "grade", "knowledge_level", "learning_goal", "weak_points", "learning_style", "resource_preference", "mistake_history"]:
+        old_value = before.get(field) if before else None
+        new_value = after.get(field)
+        if old_value != new_value:
+            changes.append({"field": field, "before": old_value, "after": new_value})
+    return changes

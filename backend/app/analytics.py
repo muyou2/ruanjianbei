@@ -6,8 +6,8 @@ from statistics import mean
 from typing import Any
 
 from .config import PROJECT_DIR
-from .database import connect, json_load
-from .repositories import get_profile
+from .database import connect
+from .repositories import get_profile, latest_evaluation
 
 
 DATASET_PATH = PROJECT_DIR / "datasets" / "uci_student_performance" / "raw" / "student-por.csv"
@@ -61,12 +61,18 @@ def public_dataset_overview() -> dict[str, Any]:
 
 def local_learning_signals() -> dict[str, Any]:
     profile = get_profile()
+    profile_id = profile.get("id") if profile else None
     with connect() as conn:
-        resource_count = conn.execute("SELECT COUNT(*) FROM resources").fetchone()[0]
-        tutor_count = conn.execute("SELECT COUNT(*) FROM conversations WHERE role='user'").fetchone()[0]
-        evaluation = conn.execute("SELECT * FROM evaluations ORDER BY id DESC LIMIT 1").fetchone()
+        resource_count = conn.execute(
+            "SELECT COUNT(*) FROM resources WHERE profile_id=?", (profile_id,)
+        ).fetchone()[0] if profile_id else 0
+        tutor_count = conn.execute(
+            "SELECT COUNT(*) FROM conversations WHERE role='user' AND profile_id=?",
+            (profile_id,),
+        ).fetchone()[0] if profile_id else 0
+    evaluation = latest_evaluation(profile_id)
     latest_score = float(evaluation["score"]) if evaluation else None
-    evaluated_weak = json_load(evaluation["weak_points"], []) if evaluation else []
+    evaluated_weak = evaluation["weak_points"] if evaluation else []
     weak_points = list(dict.fromkeys((profile or {}).get("weak_points", []) + evaluated_weak))
     signals = []
     if latest_score is None:
@@ -90,9 +96,11 @@ def local_learning_signals() -> dict[str, Any]:
     else:
         recommendation = "当前掌握情况良好，建议进入项目迁移任务，并用自己的数据替换示例数据。"
     return {
+        "profile_id": profile_id,
+        "profile_name": (profile or {}).get("display_name"),
+        "latest_evaluation": evaluation,
         "signals": signals,
         "weak_points": weak_points[:5],
         "recommendation": recommendation,
         "principle": "近期学习行为 > 历史测评 > 静态画像",
     }
-

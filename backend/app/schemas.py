@@ -12,6 +12,9 @@ class ApiResponse(BaseModel):
 
 class StudentProfile(BaseModel):
     id: int | None = None
+    demo_key: str | None = None
+    display_name: str = "当前学习者"
+    is_active: bool = True
     major: str = "计算机相关专业"
     grade: str = "大学生"
     knowledge_level: str = "入门"
@@ -26,6 +29,11 @@ class StudentProfile(BaseModel):
 
 class ProfileGenerateRequest(BaseModel):
     text: str = Field(min_length=2, max_length=4000)
+    display_name: str = "自定义学习者"
+
+
+class ProfileSelectRequest(BaseModel):
+    profile_id: int
 
 
 class KnowledgeSearchRequest(BaseModel):
@@ -43,6 +51,7 @@ class Citation(BaseModel):
 
 class ResourceGenerateRequest(BaseModel):
     topic: str = Field(default="Python 数据分析综合实践", min_length=2, max_length=200)
+    profile_id: int | None = None
 
 
 class TutorRequest(BaseModel):
