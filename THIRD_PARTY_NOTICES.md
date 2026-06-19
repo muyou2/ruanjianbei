@@ -12,5 +12,6 @@
 | Chroma | https://github.com/chroma-core/chroma | Apache-2.0 | 向量存储 |
 | Mermaid | https://github.com/mermaid-js/mermaid | MIT | 思维导图渲染 |
 | pypdf | https://github.com/py-pdf/pypdf | BSD-3-Clause | PDF 文本提取 |
+| UCI Student Performance | https://archive.ics.uci.edu/dataset/320/student+performance | CC BY 4.0 | 学习分析公开基准 |
 
 再分发时应保留各项目原始许可证与版权声明。

@@ -1,6 +1,7 @@
 import asyncio
 
 from app.agents import ProfileAgent, ReviewAgent, infer_profile
+from app.analytics import public_dataset_overview
 from app.knowledge import cosine, hashing_vector, split_text
 
 
@@ -30,3 +31,11 @@ def test_review_agent_warns_without_citations():
     result = asyncio.run(ReviewAgent().run({"lecture": "示例内容"}, []))
     assert result["citation_count"] == 0
     assert result["warnings"]
+    assert len(result["dimensions"]) == 5
+
+
+def test_uci_public_benchmark_is_available():
+    overview = public_dataset_overview()
+    assert overview["available"] is True
+    assert overview["records"] == 649
+    assert overview["license"] == "CC BY 4.0"

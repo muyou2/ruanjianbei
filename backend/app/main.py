@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .agents import KnowledgeAgent, ProfileAgent, citations_text
+from .analytics import local_learning_signals, public_dataset_overview
 from .config import PROJECT_DIR, get_settings
 from .database import init_db
 from .knowledge import extract_text, knowledge_store, split_text
@@ -101,6 +102,16 @@ def config_status():
     )
 
 
+@app.get("/api/analytics/overview")
+def analytics_overview():
+    return response(
+        {
+            "public_benchmark": public_dataset_overview(),
+            "personal_signals": local_learning_signals(),
+        }
+    )
+
+
 @app.get("/api/profiles")
 def profile_get():
     return response(get_profile())
@@ -185,23 +196,38 @@ def quizzes_get(resource_id: int | None = None):
 @app.post("/api/tutor/chat")
 async def tutor_chat(payload: TutorRequest):
     citations = await KnowledgeAgent().run(payload.question, 4)
-    fallback = f"""根据课程资料，建议从问题的输入、处理过程和预期输出三个部分理解。
+    if payload.mode == "socratic":
+        fallback = f"""我们先不急着给最终结论。针对“{payload.question}”，请先想一想：
 
-针对“{payload.question}”，先用一个最小可运行示例复现，再逐步增加条件。若出现错误，请优先查看异常类型与堆栈最后一行，并对照参考片段核验概念。
+1. 这个问题的**输入是什么、期望输出是什么**？
+2. 你能否构造一个只有 2～3 个元素的最小示例？
+3. 如果把关键语句拆成两步，中间变量会是什么？
 
-**学习建议**
+**提示一**：先根据参考资料找到相关数据类型或语法规则。
+
+**提示二**：运行最小示例后，告诉我实际输出与你的预期差在哪里，我再给下一层提示。
+
+> 这种模式优先训练问题拆解与自我解释，而不是直接替你完成答案。"""
+        system = "你是采用苏格拉底教学法的 Python 助教。优先提问、分层提示和检查理解，仅依据资料，不直接替学生完成整道题。使用 Markdown。"
+    else:
+        fallback = f"""根据课程资料，针对“{payload.question}”可以从输入、处理过程和预期输出三个部分理解。
+
+先用最小可运行示例复现，再逐步增加条件。若出现错误，请优先查看异常类型与堆栈最后一行，并对照参考片段核验概念。
+
+**建议步骤**
 1. 用自己的话复述概念。
 2. 修改示例中的一个变量并观察结果。
 3. 完成一道同知识点练习题。
 
 以上回答基于当前课程知识库生成。"""
+        system = "你是 Python 课程助教。直接、清晰地讲解问题，仅依据资料回答；证据不足时明确说明。使用 Markdown。"
 
     async def stream():
         save_message("user", payload.question)
         yield sse("citations", citations)
         answer = ""
         async for chunk in llm_service.stream(
-            "你是 Python 课程助教。仅依据资料回答；证据不足时明确说明。使用 Markdown。",
+            system,
             f"问题：{payload.question}\n资料：\n{citations_text(citations)}",
             fallback,
         ):

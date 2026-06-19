@@ -72,6 +72,7 @@ export default function ResourcesPage() {
             <div className="flex items-center gap-2"><ShieldCheck className="text-emerald-600" /><h3 className="font-black">审校报告</h3></div>
             <div className="mt-4 text-4xl font-black text-emerald-600">{review.score}<span className="text-sm text-slate-400"> / 100</span></div>
             <div className="mt-3 text-xs leading-6 text-slate-500">引用 {review.citation_count} 条 · 安全检查{review.safety}<br />{review.note}</div>
+            {review.dimensions && <div className="mt-4 space-y-2">{Object.entries(review.dimensions).map(([name, value]) => <div key={name}><div className="mb-1 flex justify-between text-[11px]"><span>{name}</span><span className="font-bold">{String(value)}</span></div><div className="h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500" style={{ width: `${value}%` }} /></div></div>)}</div>}
             {review.warnings?.map((w: string) => <div key={w} className="mt-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-700">{w}</div>)}
           </Card>}
           <Card>

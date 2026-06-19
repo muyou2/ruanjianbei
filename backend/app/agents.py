@@ -287,9 +287,17 @@ class ReviewAgent:
         text = str(resources)
         risky = [word for word in ["保证百分之百", "绝对正确", "无需验证"] if word in text]
         score = min(100, 68 + len(citations) * 6 - len(risky) * 15)
+        dimensions = {
+            "相关性": min(100, 78 + len(citations) * 4),
+            "事实依据": min(100, 62 + len(citations) * 8),
+            "内容完整": 92 if all(key in resources for key in ["learning_path", "lecture", "quiz", "code_case", "mindmap"]) else 65,
+            "教学适配": 88 if "learning_path" in resources and "quiz" in resources else 70,
+            "内容安全": 100 if not risky else max(40, 100 - len(risky) * 25),
+        }
         return {
             "passed": score >= 70,
             "score": score,
+            "dimensions": dimensions,
             "citation_count": len(citations),
             "warnings": (["知识库引用较少，部分扩展内容需核验"] if len(citations) < 2 else []) + risky,
             "safety": "通过",

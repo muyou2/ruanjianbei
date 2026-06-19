@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 test('核心学习闭环可以完成', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '今天，和一组 AI 教练一起学习' })).toBeVisible()
+  await expect(page.getByText('公开学习数据基准')).toBeVisible()
 
   await page.getByRole('link', { name: '学生画像' }).click()
   await page.locator('textarea').fill('我是计算机专业大二学生，函数和 Pandas 不熟，希望通过图解、代码和项目练习学习。')
@@ -21,6 +22,7 @@ test('核心学习闭环可以完成', async ({ page }) => {
   await expect(page.getByText(/个性化学习路径/)).toBeVisible()
 
   await page.getByRole('link', { name: '智能答疑' }).click()
+  await expect(page.getByRole('button', { name: '启发式引导' })).toBeVisible()
   await page.getByRole('button', { name: /发送/ }).click()
   await expect(page.getByText(/参考 1/)).toBeVisible({ timeout: 30_000 })
 

@@ -10,8 +10,12 @@ export default function KnowledgePage() {
   const [query, setQuery] = useState('Python 函数如何帮助组织数据分析代码？')
   const [results, setResults] = useState<Citation[]>([])
   const [loading, setLoading] = useState(false)
+  const [benchmark, setBenchmark] = useState<any>(null)
   const load = () => api<any[]>('/api/documents').then(setDocuments)
-  useEffect(() => { load().catch(() => null) }, [])
+  useEffect(() => {
+    load().catch(() => null)
+    api<any>('/api/analytics/overview').then(data => setBenchmark(data.public_benchmark)).catch(() => null)
+  }, [])
   const upload = async (file?: File) => {
     if (!file) return
     setLoading(true)
@@ -42,6 +46,11 @@ export default function KnowledgePage() {
               </div>)}
             </div>
           </Card>
+          {benchmark?.available && <Card>
+            <div className="flex items-center justify-between"><div><div className="text-xs font-bold text-cyan-600">开放数据集</div><h3 className="mt-1 font-black">{benchmark.name}</h3></div><span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">{benchmark.license}</span></div>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.records}</div><div className="text-[10px] text-slate-400">记录</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.features}</div><div className="text-[10px] text-slate-400">特征</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.average_final_grade}</div><div className="text-[10px] text-slate-400">平均成绩/20</div></div></div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">来源：{benchmark.source}。用于学习分析基准与界面验证，不参与自动权益决策。</p>
+          </Card>}
         </div>
         <Card>
           <h3 className="font-black">检索实验室</h3>

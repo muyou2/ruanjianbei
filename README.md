@@ -36,4 +36,6 @@ Windows 双击 `start.bat`，或在 PowerShell 中执行：
 4. 在“智能答疑”提问并查看知识库引用。
 5. 在“学习评估”答题，查看薄弱点回写画像。
 
+Dashboard 同时展示来自 UCI Student Performance 的公开学习分析基准，并明确数据适用边界。研究依据与竞品调研见 [docs/RESEARCH.md](docs/RESEARCH.md)。
+
 详细配置见 [backend/README.md](backend/README.md) 与 [frontend/README.md](frontend/README.md)。

@@ -9,9 +9,10 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [documents, setDocuments] = useState<any[]>([])
   const [resources, setResources] = useState<Resource[]>([])
+  const [analytics, setAnalytics] = useState<any>(null)
   useEffect(() => {
-    Promise.all([api<Profile | null>('/api/profiles'), api<any[]>('/api/documents'), api<Resource[]>('/api/resources')])
-      .then(([p, d, r]) => { setProfile(p); setDocuments(d); setResources(r) }).catch(() => null)
+    Promise.all([api<Profile | null>('/api/profiles'), api<any[]>('/api/documents'), api<Resource[]>('/api/resources'), api<any>('/api/analytics/overview')])
+      .then(([p, d, r, a]) => { setProfile(p); setDocuments(d); setResources(r); setAnalytics(a) }).catch(() => null)
   }, [])
   const stats = [
     { label: '画像维度', value: profile ? '8' : '0', icon: BrainCircuit, color: 'from-violet-500 to-fuchsia-500' },
@@ -55,6 +56,26 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+      {analytics && <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <div className="flex items-center justify-between"><div><div className="text-xs font-bold uppercase tracking-widest text-violet-500">Learning Analytics</div><h3 className="mt-1 font-black">基于近期行为的动态建议</h3></div><span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">行为优先</span></div>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            {analytics.personal_signals.signals.map((signal: any) => <div key={signal.label} className="rounded-2xl bg-slate-50 p-3"><div className="text-[11px] font-bold text-slate-400">{signal.label}</div><div className="mt-1 text-sm font-black">{signal.value}</div></div>)}
+          </div>
+          <div className="mt-4 rounded-2xl bg-gradient-to-r from-violet-50 to-indigo-50 p-4 text-sm leading-6 text-slate-700"><span className="font-black text-violet-700">下一步：</span>{analytics.personal_signals.recommendation}</div>
+          <div className="mt-2 text-[11px] text-slate-400">决策原则：{analytics.personal_signals.principle}</div>
+        </Card>
+        <Card>
+          <div className="text-xs font-bold uppercase tracking-widest text-cyan-600">Open Benchmark</div>
+          <h3 className="mt-1 font-black">公开学习数据基准</h3>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-cyan-50 p-3"><div className="text-2xl font-black text-cyan-700">{analytics.public_benchmark.records}</div><div className="text-[11px] text-cyan-700">真实记录</div></div>
+            <div className="rounded-2xl bg-emerald-50 p-3"><div className="text-2xl font-black text-emerald-700">{analytics.public_benchmark.pass_rate}%</div><div className="text-[11px] text-emerald-700">及格率</div></div>
+            <div className="rounded-2xl bg-amber-50 p-3"><div className="text-2xl font-black text-amber-700">{analytics.public_benchmark.risk_rate}%</div><div className="text-[11px] text-amber-700">风险样本</div></div>
+          </div>
+          <p className="mt-4 text-xs leading-5 text-slate-500">UCI Student Performance · {analytics.public_benchmark.license}。仅用于演示学习分析方法，不把葡萄牙中学生数据冒充为中国高校 Python 数据。</p>
+        </Card>
+      </div>}
     </>
   )
 }
