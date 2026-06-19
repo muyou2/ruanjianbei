@@ -40,6 +40,10 @@ def test_complete_python_learning_loop():
         )
         assert search.status_code == 200
         assert search.json()["data"]
+        assert search.json()["data"][0]["retrieval_mode"] in {
+            "语义向量检索",
+            "Hashing MVP 检索",
+        }
 
         generated_resource = client.post(
             "/api/resources/generate",
@@ -66,8 +70,18 @@ def test_complete_python_learning_loop():
         ]
         done = next(data for event, data in events if event == "done")
         resource = client.get(f"/api/resources/{done['resource_id']}").json()["data"]
-        for key in ["learning_path", "lecture", "mindmap", "quiz", "code_case", "ppt_outline"]:
+        for key in [
+            "learning_path",
+            "lecture",
+            "mindmap",
+            "quiz",
+            "code_case",
+            "ppt_outline",
+            "multimodal_resource",
+        ]:
             assert resource["content"][key]
+        assert resource["content"]["generation_metadata"]
+        assert resource["content"]["multimodal_resource"]["type"] == "html_animation"
         for agent in [
             "ProfileAgent",
             "KnowledgeAgent",
@@ -79,6 +93,10 @@ def test_complete_python_learning_loop():
             "ReviewAgent",
         ]:
             assert agent in resource["content"]["agent_outputs"]
+
+        pptx = client.get(f"/api/resources/{resource['id']}/pptx")
+        assert pptx.status_code == 200
+        assert pptx.content[:2] == b"PK"
 
         tutor = client.post(
             "/api/tutor/chat",

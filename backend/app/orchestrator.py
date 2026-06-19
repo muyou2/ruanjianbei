@@ -71,14 +71,22 @@ class Orchestrator:
 
         learning_path = await self.planner.run(topic, profile, state.citations)
         state.resources["learning_path"] = learning_path
-        state.agent_outputs["PlannerAgent"] = {"learning_path": learning_path}
+        state.agent_outputs["PlannerAgent"] = {
+            "learning_path": learning_path,
+            "generation": getattr(self.planner, "last_generation", {}),
+        }
         yield sse(
             "progress",
             self.transition(state, "plan_generated", "PlannerAgent", "已生成个性化学习路径", 32),
         )
         yield sse(
             "resource",
-            {"type": "learning_path", "content": learning_path, "generated_by": "PlannerAgent"},
+            {
+                "type": "learning_path",
+                "content": learning_path,
+                "generated_by": "PlannerAgent",
+                "generation": getattr(self.planner, "last_generation", {}),
+            },
         )
 
         material, code_case, mindmap = await asyncio.gather(
@@ -89,9 +97,18 @@ class Orchestrator:
         state.resources.update(material)
         state.resources["code_case"] = code_case
         state.resources["mindmap"] = mindmap
-        state.agent_outputs["ResourceAgent"] = material
-        state.agent_outputs["CodeAgent"] = {"code_case": code_case}
-        state.agent_outputs["MindMapAgent"] = {"mindmap": mindmap}
+        state.agent_outputs["ResourceAgent"] = {
+            **material,
+            "generation": getattr(self.resource, "last_generation", {}),
+        }
+        state.agent_outputs["CodeAgent"] = {
+            "code_case": code_case,
+            "generation": getattr(self.code, "last_generation", {}),
+        }
+        state.agent_outputs["MindMapAgent"] = {
+            "mindmap": mindmap,
+            "generation": getattr(self.mindmap, "last_generation", {}),
+        }
         yield sse(
             "progress",
             self.transition(
@@ -105,30 +122,57 @@ class Orchestrator:
         attribution = {
             "lecture": "ResourceAgent",
             "ppt_outline": "ResourceAgent",
+            "multimodal_resource": "ResourceAgent",
             "code_case": "CodeAgent",
             "mindmap": "MindMapAgent",
         }
-        for resource_type in ["lecture", "mindmap", "code_case", "ppt_outline"]:
+        generation_map = {
+            "lecture": getattr(self.resource, "last_generation", {}).get("lecture", {}),
+            "ppt_outline": getattr(self.resource, "last_generation", {}).get("ppt_outline", {}),
+            "multimodal_resource": {
+                "label": "Mock 规则生成",
+                "used_real_model": False,
+                "rag_enhanced": bool(state.citations),
+            },
+            "code_case": getattr(self.code, "last_generation", {}),
+            "mindmap": getattr(self.mindmap, "last_generation", {}),
+        }
+        for resource_type in ["lecture", "mindmap", "code_case", "ppt_outline", "multimodal_resource"]:
             yield sse(
                 "resource",
                 {
                     "type": resource_type,
                     "content": state.resources[resource_type],
                     "generated_by": attribution[resource_type],
+                    "generation": generation_map[resource_type],
                 },
             )
 
         quiz = await self.quiz.run(topic, profile, state.citations)
         state.resources["quiz"] = quiz
-        state.agent_outputs["QuizAgent"] = {"quiz": quiz}
+        state.agent_outputs["QuizAgent"] = {
+            "quiz": quiz,
+            "generation": getattr(self.quiz, "last_generation", {}),
+        }
         yield sse(
             "progress",
             self.transition(state, "quiz_generated", "QuizAgent", "已生成四类针对性练习题", 76),
         )
-        yield sse("resource", {"type": "quiz", "content": quiz, "generated_by": "QuizAgent"})
+        yield sse(
+            "resource",
+            {
+                "type": "quiz",
+                "content": quiz,
+                "generated_by": "QuizAgent",
+                "generation": getattr(self.quiz, "last_generation", {}),
+            },
+        )
 
         state.review = await self.review.run(state.resources, state.citations, profile)
-        state.agent_outputs["ReviewAgent"] = state.review
+        state.agent_outputs["ReviewAgent"] = {
+            **state.review,
+            "generation": getattr(self.review, "last_generation", {}),
+        }
         yield sse(
             "progress",
             self.transition(state, "review_completed", "ReviewAgent", "已完成规则审校与证据检查", 90),
@@ -139,6 +183,10 @@ class Orchestrator:
         state.resources["agent_outputs"] = state.agent_outputs
         state.resources["workflow"] = state.state_history
         state.resources["profile_snapshot"] = profile
+        state.resources["generation_metadata"] = generation_map | {
+            "learning_path": getattr(self.planner, "last_generation", {}),
+            "quiz": getattr(self.quiz, "last_generation", {}),
+        }
         resource_id = save_resource(topic, profile.get("id"), state.resources, state.review)
         yield sse(
             "progress",

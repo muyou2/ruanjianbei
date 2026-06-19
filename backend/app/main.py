@@ -1,11 +1,12 @@
 import json
+import re
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from .agents import DEMO_PROFILES, KnowledgeAgent, ProfileAgent, citations_text
 from .analytics import local_learning_signals, public_dataset_overview
@@ -15,6 +16,7 @@ from .evaluation import score_question
 from .knowledge import extract_text, knowledge_store, split_text
 from .llm_service import llm_service
 from .orchestrator import orchestrator, sse
+from .ppt_service import build_pptx
 from .repositories import (
     create_document,
     delete_document,
@@ -71,6 +73,7 @@ def seed_course() -> None:
     for source in sorted(course_dir.glob("*.md")):
         if source.name not in existing:
             ingest_path(source, source.name)
+    knowledge_store.ensure_index()
 
 
 def seed_demo_profiles() -> None:
@@ -117,9 +120,11 @@ def config_status():
     return response(
         {
             "provider": llm_service.provider_name,
+            "model": llm_service.model_name,
             "mock_mode": llm_service.is_mock,
             "vector_backend": knowledge_store.backend,
-            "retrieval_status": "MVP 实现：本地 Hashing 向量 + Chroma 持久化，非 sentence-transformers 强语义模型",
+            "retrieval": knowledge_store.status(),
+            "retrieval_status": knowledge_store.mode_label,
             "course": "Python 基础到数据分析项目实战",
         }
     )
@@ -156,7 +161,8 @@ def profile_select(payload: ProfileSelectRequest):
 @app.post("/api/profiles")
 async def profile_generate(payload: ProfileGenerateRequest):
     before = get_profile()
-    profile = await ProfileAgent().run(payload.text, payload.display_name)
+    agent = ProfileAgent()
+    profile = await agent.run(payload.text, payload.display_name)
     saved = save_profile(profile)
     record_learning_event(
         saved.get("id"),
@@ -170,6 +176,7 @@ async def profile_generate(payload: ProfileGenerateRequest):
             "profile": saved,
             "before": before,
             "changes": profile_changes(before, saved),
+            "generation": getattr(agent, "last_generation", {}),
         },
         "学生画像已根据输入文本生成并保存",
     )
@@ -238,6 +245,23 @@ def resource_get(resource_id: int):
     if not item:
         raise HTTPException(404, "资源包不存在")
     return response(item)
+
+
+@app.get("/api/resources/{resource_id}/pptx")
+def resource_pptx(resource_id: int):
+    item = get_resource(resource_id)
+    if not item:
+        raise HTTPException(404, "资源包不存在")
+    try:
+        target = build_pptx(item)
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from error
+    safe_name = re.sub(r'[\\/:*?"<>|]+', "-", item["topic"])
+    return FileResponse(
+        target,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename=f"{safe_name}.pptx",
+    )
 
 
 @app.post("/api/resources/{resource_id}/feedback")
@@ -314,21 +338,28 @@ async def tutor_chat(payload: TutorRequest):
             "evidence",
             {
                 "sufficient": evidence_sufficient,
-                "message": "知识库证据充足" if evidence_sufficient else "知识库证据不足，需要人工核验",
+                "message": (
+                    "知识库证据充足"
+                    if evidence_sufficient
+                    else "当前课程知识库证据不足，建议补充课程资料或人工核验。"
+                ),
+                "retrieval_mode": knowledge_store.mode_label,
             },
         )
         if not evidence_sufficient:
-            answer = "## 知识库证据不足\n\n当前课程知识库没有检索到足够相关的内容，因此系统不生成确定性答案。请补充课程资料，或由教师/助教人工核验后再回答。"
+            answer = "## 当前课程知识库证据不足\n\n建议补充课程资料或人工核验。系统已停止生成确定性结论。"
             yield sse("delta", {"text": answer})
             save_message("assistant", answer, citations, profile_id=profile_id)
             yield sse("done", {"message": "证据不足，已停止扩展生成"})
             return
         answer = ""
-        async for chunk in llm_service.stream(
+        generation, iterator = await llm_service.stream_result(
             system,
             f"问题：{payload.question}\n资料：\n{citations_text(citations)}",
             fallback,
-        ):
+        )
+        yield sse("generation", generation.metadata(rag=True))
+        async for chunk in iterator:
             answer += chunk
             yield sse("delta", {"text": chunk})
         save_message("assistant", answer, citations, profile_id=profile_id)

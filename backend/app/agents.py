@@ -165,7 +165,7 @@ class ProfileAgent:
 
     async def run(self, text: str, display_name: str = "自定义学习者") -> StudentProfile:
         fallback = infer_profile(text, display_name)
-        data = await llm_service.structured(
+        data, generation = await llm_service.structured_result(
             "你是高校学生画像分析师。只能根据用户原文提取八维画像，不得补造经历。",
             f"用户原文：{text}",
             fallback.model_dump(mode="json"),
@@ -174,6 +174,7 @@ class ProfileAgent:
         allowed.update({key: value for key, value in data.items() if key in allowed and value not in (None, "")})
         allowed["display_name"] = display_name
         allowed["source_text"] = text
+        self.last_generation = generation.metadata()
         return StudentProfile(**allowed)
 
 
@@ -212,18 +213,51 @@ class PlannerAgent:
 5. **复盘（10 分钟）**：记录错误原因；测评结果将写回学生画像。
 
 **完成标准**：能够解释关键步骤、独立修改代码，并在测评中说明错误原因。"""
-        return await llm_service.generate(
+        result = await llm_service.generate_result(
             "你是个性化学习路径智能体。必须显式使用画像、薄弱点、偏好和知识库证据。",
             f"主题：{topic}\n画像：{profile}\n策略：{strategy}\n知识库：{citations_text(citations)}",
             fallback,
         )
+        self.last_generation = result.metadata(rag=bool(citations))
+        return result.content
+
+
+def multimodal_html(topic: str, profile: dict[str, Any]) -> dict[str, Any]:
+    strategy = profile_strategy(profile)
+    steps = [
+        ("读取数据", "read_csv()"),
+        ("检查缺失", "isna().sum()"),
+        ("处理重复", "drop_duplicates()"),
+        ("转换类型", "to_numeric()"),
+        ("分组统计", "groupby()"),
+        ("可视化", "plot()"),
+    ]
+    cards = "".join(
+        f'<div class="step" style="animation-delay:{index * 0.35}s"><b>{index + 1}. {name}</b><code>{api}</code></div>'
+        for index, (name, api) in enumerate(steps)
+    )
+    html = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+body{{font-family:system-ui;margin:0;padding:24px;background:linear-gradient(135deg,#f5f3ff,#eef2ff);color:#1e293b}}
+h2{{margin:0 0 6px}}p{{margin:0 0 18px;color:#64748b}}.flow{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
+.step{{background:white;border:1px solid #ddd6fe;border-radius:16px;padding:16px;opacity:0;transform:translateY(12px);animation:show .5s forwards;box-shadow:0 8px 24px #7c3aed12}}
+code{{display:block;margin-top:8px;color:#6d28d9;background:#f5f3ff;padding:6px;border-radius:8px}}
+@keyframes show{{to{{opacity:1;transform:none}}}}@media(max-width:650px){{.flow{{grid-template-columns:1fr}}}}
+</style></head><body><h2>{topic} · 数据清洗流程图解</h2>
+<p>{profile.get('display_name')} · {strategy['label']}：{strategy['tone']}</p><div class="flow">{cards}</div></body></html>"""
+    return {
+        "type": "html_animation",
+        "title": "Pandas 数据清洗六步动画",
+        "html": html,
+        "generated_by": "ResourceAgent",
+        "status": "MVP 实现",
+    }
 
 
 class ResourceAgent:
     name = "ResourceAgent"
     display_name = "课程讲义师"
 
-    async def run(self, topic: str, profile: dict, citations: list[dict]) -> dict[str, str]:
+    async def run(self, topic: str, profile: dict, citations: list[dict]) -> dict[str, Any]:
         strategy = profile_strategy(profile)
         weak = "、".join(profile.get("weak_points", []))
         source_names = "、".join(dict.fromkeys(item["title"] for item in citations)) or "无可用来源"
@@ -247,11 +281,12 @@ class ResourceAgent:
 
 ## 证据来源
 本讲义检索并参考：{source_names}。未被知识库覆盖的扩展结论需要人工核验。"""
-        lecture = await llm_service.generate(
+        lecture_result = await llm_service.generate_result(
             "你是 Python 课程讲义智能体。必须适配学生画像，并区分知识库证据与扩展建议。",
             f"主题：{topic}\n画像：{profile}\n策略：{strategy}\n资料：{citations_text(citations)}",
             fallback,
         )
+        lecture = lecture_result.content
         ppt = f"""# 《{topic}》PPT 大纲
 
 ---
@@ -283,7 +318,20 @@ class ResourceAgent:
 - 四类题目
 - {strategy['task']}
 - 测评结果写回画像"""
-        return {"lecture": lecture, "ppt_outline": ppt}
+        ppt_result = await llm_service.generate_result(
+            "你是课程 PPT 内容设计智能体。输出 Markdown 幻灯片大纲，突出画像适配、代码和测评，不得虚构来源。",
+            f"主题：{topic}\n画像：{profile}\n策略：{strategy}\n资料：{citations_text(citations)}",
+            ppt,
+        )
+        self.last_generation = {
+            "lecture": lecture_result.metadata(rag=bool(citations)),
+            "ppt_outline": ppt_result.metadata(rag=bool(citations)),
+        }
+        return {
+            "lecture": lecture,
+            "ppt_outline": ppt_result.content,
+            "multimodal_resource": multimodal_html(topic, profile),
+        }
 
 
 class QuizAgent:
@@ -329,7 +377,24 @@ class QuizAgent:
                 knowledge_point="Pandas 数据清洗代码",
             ),
         ]
-        return [question.model_dump() for question in questions]
+        fallback = {"questions": [question.model_dump() for question in questions]}
+        data, result = await llm_service.structured_result(
+            "你是高校 Python 测评设计师。生成恰好四题：单选、判断、简答、代码各一题。每题必须包含 id、type、question、options、answer、explanation、knowledge_point。",
+            f"主题：{topic}\n学生画像：{profile}\n知识库：{citations_text(citations)}",
+            fallback,
+        )
+        parsed = []
+        try:
+            for item in data.get("questions", []):
+                parsed.append(QuizQuestion(**item).model_dump())
+        except Exception:
+            parsed = fallback["questions"]
+            result.fallback_used = True
+            result.used_real_model = False
+            result.source = "mock_fallback"
+            result.error = result.error or "题目 JSON 结构不符合要求"
+        self.last_generation = result.metadata(rag=bool(citations))
+        return parsed if len(parsed) == 4 else fallback["questions"]
 
 
 class CodeAgent:
@@ -344,7 +409,7 @@ class CodeAgent:
             task = "代码旁标注每个 API 的作用，并整理容易混淆的 `dropna`、`fillna`、`drop_duplicates`。"
         else:
             task = "将流程封装为可复用函数，并生成清洗前后对比报告。"
-        return f"""# {topic}：个性化代码实操
+        fallback = f"""# {topic}：个性化代码实操
 
 **适配策略**：{strategy['label']}
 **本次要求**：{task}
@@ -370,6 +435,13 @@ def clean_student_data(path: str) -> tuple[pd.DataFrame, dict]:
 {strategy['task']}。请记录每个清洗决策的理由，不要只提交最终代码。
 
 > 代码示例未在服务器执行；运行结果需在本地 Python 环境核验。"""
+        result = await llm_service.generate_result(
+            "你是 Python 代码教练。输出可读的 Markdown 代码案例，必须注明代码未在服务器执行，并适配学生画像。",
+            f"主题：{topic}\n画像：{profile}\n策略：{strategy}",
+            fallback,
+        )
+        self.last_generation = result.metadata()
+        return result.content
 
 
 class MindMapAgent:
@@ -378,7 +450,7 @@ class MindMapAgent:
 
     async def run(self, topic: str, profile: dict) -> str:
         weak = profile.get("weak_points", ["数据清洗"])
-        return f"""mindmap
+        fallback = f"""mindmap
   root(({topic}))
     学习者
       {profile.get('display_name')}
@@ -403,6 +475,20 @@ class MindMapAgent:
       代码任务
       测评
       错题写回画像"""
+        result = await llm_service.generate_result(
+            "你是 Mermaid 思维导图智能体。只输出合法 Mermaid mindmap 内容，不要代码围栏。",
+            f"主题：{topic}\n画像：{profile}",
+            fallback,
+        )
+        content = result.content.strip().removeprefix("```mermaid").removesuffix("```").strip()
+        if not content.startswith("mindmap"):
+            content = fallback
+            result.fallback_used = True
+            result.used_real_model = False
+            result.source = "mock_fallback"
+            result.error = result.error or "模型未返回合法 mindmap"
+        self.last_generation = result.metadata()
+        return content
 
 
 class ReviewAgent:
@@ -415,7 +501,15 @@ class ReviewAgent:
         citations: list[dict],
         profile: dict[str, Any],
     ) -> dict[str, Any]:
-        required = ["learning_path", "lecture", "mindmap", "quiz", "code_case", "ppt_outline"]
+        required = [
+            "learning_path",
+            "lecture",
+            "mindmap",
+            "quiz",
+            "code_case",
+            "ppt_outline",
+            "multimodal_resource",
+        ]
         missing = [key for key in required if not resources.get(key)]
         text = str(resources)
         absolute_words = [word for word in ["保证百分之百", "绝对正确", "一定能", "无需核验"] if word in text]
@@ -453,7 +547,7 @@ class ReviewAgent:
             + (20 if adapted else 8)
             + (10 if resources.get("quiz") else 0)
         )
-        return {
+        base_review = {
             "passed": score >= 70 and not missing and not evidence_insufficient,
             "score": score,
             "status": "通过" if score >= 70 and not needs_human_review else "需要人工核验",
@@ -463,6 +557,19 @@ class ReviewAgent:
             "warnings": warnings,
             "note": "评分由规则实时计算，不是固定分数。",
         }
+        fallback_advice = (
+            "规则审校通过，可在演示前抽查引用与代码示例。"
+            if base_review["passed"]
+            else "请根据警告补充知识库证据、删除绝对化表达，并由教师核验后使用。"
+        )
+        result = await llm_service.generate_result(
+            "你是教育内容审校智能体。只能基于规则结果和课程引用提出简短修改建议，不得改变规则评分。",
+            f"规则结果：{base_review}\n画像：{profile}\n引用：{citations_text(citations)}",
+            fallback_advice,
+        )
+        base_review["llm_advice"] = result.content
+        self.last_generation = result.metadata(rag=bool(citations))
+        return base_review
 
 
 @dataclass

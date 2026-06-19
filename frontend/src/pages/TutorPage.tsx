@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { BookOpenCheck, Send } from 'lucide-react'
+import { BookOpenCheck, ChevronDown, Send } from 'lucide-react'
 import { consumeSSE } from '../api'
 import { Button, Card, Markdown, PageHeader } from '../components'
 import type { Citation } from '../types'
 
-type Message = { role: 'user' | 'assistant'; content: string; citations?: Citation[] }
+type Message = { role: 'user' | 'assistant'; content: string; citations?: Citation[]; generation?: any }
 
 export default function TutorPage() {
   const [question, setQuestion] = useState('Python 中列表推导式和普通 for 循环应该如何选择？')
@@ -22,6 +22,7 @@ export default function TutorPage() {
           const next = [...prev]; const last = { ...next[next.length - 1] }
           if (event === 'citations') last.citations = data
           if (event === 'delta') last.content += data.text
+          if (event === 'generation') last.generation = data
           next[next.length - 1] = last; return next
         })
         if (event === 'evidence') setEvidence(data)
@@ -41,7 +42,8 @@ export default function TutorPage() {
               <div className={message.role === 'user' ? 'rounded-3xl rounded-br-md bg-slate-950 px-5 py-4 text-sm text-white' : 'rounded-3xl rounded-bl-md bg-violet-50 px-5 py-4'}>
                 {message.role === 'assistant' ? (message.content ? <Markdown>{message.content}</Markdown> : <span className="animate-pulse text-sm text-violet-600">正在检索资料并组织回答…</span>) : message.content}
               </div>
-              {message.citations && message.citations.length > 0 && <div className="mt-3 grid gap-2 sm:grid-cols-2">{message.citations.map((c, n) => <div key={c.chunk_id} className="rounded-2xl border border-slate-100 p-3 text-xs"><div className="flex justify-between font-bold text-violet-600"><span>参考 {n + 1} · {c.title}</span><span>{Math.round(c.score * 100)}%</span></div><p className="mt-1 line-clamp-3 leading-5 text-slate-500">{c.content}</p></div>)}</div>}
+              {message.generation && <div className="mt-2 text-[10px] font-bold text-slate-400">生成来源：{message.generation.label}{message.generation.fallback_used ? ' · 真实模型失败后已回退' : ''}</div>}
+              {message.citations && message.citations.length > 0 && <details className="mt-3 rounded-2xl border border-slate-100 bg-white p-3 text-xs"><summary className="flex cursor-pointer list-none items-center justify-between font-bold text-violet-600"><span>参考资料片段（{message.citations.length}）</span><ChevronDown className="h-4 w-4" /></summary><div className="mt-3 grid gap-2 sm:grid-cols-2">{message.citations.map((c, n) => <div key={c.chunk_id} className="rounded-xl bg-slate-50 p-3"><div className="flex justify-between font-bold text-violet-600"><span>参考 {n + 1} · {c.title}</span><span>{Math.round(c.score * 100)}%</span></div><div className="mt-1 text-[10px] text-slate-400">{c.retrieval_mode}</div><p className="mt-1 line-clamp-4 leading-5 text-slate-500">{c.content}</p></div>)}</div></details>}
             </div>)}
           </div>
           <div className="border-t border-slate-100 p-4"><div className="flex gap-2"><textarea value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask() } }} className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-violet-400" placeholder="输入课程问题，Enter 发送…" /><Button loading={loading} onClick={ask}><Send className="h-4 w-4" />发送</Button></div></div>

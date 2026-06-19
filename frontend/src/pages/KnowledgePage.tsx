@@ -11,10 +11,12 @@ export default function KnowledgePage() {
   const [results, setResults] = useState<Citation[]>([])
   const [loading, setLoading] = useState(false)
   const [benchmark, setBenchmark] = useState<any>(null)
+  const [status, setStatus] = useState<any>(null)
   const load = () => api<any[]>('/api/documents').then(setDocuments)
   useEffect(() => {
     load().catch(() => null)
     api<any>('/api/analytics/overview').then(data => setBenchmark(data.public_benchmark)).catch(() => null)
+    api<any>('/api/config/status').then(setStatus).catch(() => null)
   }, [])
   const upload = async (file?: File) => {
     if (!file) return
@@ -26,7 +28,10 @@ export default function KnowledgePage() {
   const remove = async (id: number) => { await api(`/api/documents/${id}`, { method: 'DELETE' }); await load() }
   return (
     <>
-      <PageHeader eyebrow="Knowledge Agent" title="让每一次生成，都有课程资料作为锚点" description="当前采用 MVP Hashing 向量 + Chroma 持久化检索，真实执行切块、向量写入与 top-k 查询，但不宣传为 sentence-transformers 强语义检索。" />
+      <PageHeader eyebrow="Knowledge Agent" title="让每一次生成，都有课程资料作为锚点" description="优先加载 sentence-transformers 中文语义向量；模型未安装或加载失败时自动回退 Hashing MVP 检索，页面如实显示当前模式。" />
+      <div className={`mb-6 rounded-2xl border px-4 py-3 text-sm font-bold ${status?.retrieval?.mode === '语义向量检索' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+        当前检索模式：{status?.retrieval?.mode || '加载中'}{status?.retrieval?.embedding_model ? ` · ${status.retrieval.embedding_model}` : ' · Hashing MVP'}
+      </div>
       <div className="grid gap-6 xl:grid-cols-[.9fr_1.1fr]">
         <div className="space-y-6">
           <Card>
@@ -58,7 +63,8 @@ export default function KnowledgePage() {
           <div className="mt-4 flex gap-2"><input value={query} onChange={e => setQuery(e.target.value)} className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-violet-400" /><Button onClick={search}><Search className="h-4 w-4" />检索</Button></div>
           <div className="mt-5 space-y-3">
             {results.length ? results.map((item, i) => <div key={item.chunk_id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between"><div className="text-xs font-bold text-violet-600">片段 {i + 1} · {item.title}</div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">相关度 {Math.round(item.score * 100)}%</span></div>
+              <div className="flex items-center justify-between gap-3"><div className="text-xs font-bold text-violet-600">片段 {i + 1} · {item.title}</div><span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">相关度 {Math.round(item.score * 100)}%</span></div>
+              <div className="mt-1 text-[10px] font-bold text-slate-400">{item.retrieval_mode || status?.retrieval?.mode}</div>
               <p className="mt-2 line-clamp-5 text-sm leading-6 text-slate-600">{item.content}</p>
             </div>) : <EmptyState title="尚未执行检索" text="输入课程问题，查看最相关的知识片段。" />}
           </div>

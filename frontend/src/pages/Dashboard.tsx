@@ -44,6 +44,9 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader eyebrow="Dashboard" title="当前学生的真实学习闭环" description="这里只展示当前画像、该生资源历史、真实测评、错题和薄弱点。切换学生后，Dashboard 会同步变化。" />
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
+        {['画像构建', '知识检索', '资源生成', '智能辅导', '学习评估', '动态调整'].map((item, index) => <div key={item} className="flex shrink-0 items-center gap-2"><span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700">{index + 1}. {item}</span>{index < 5 && <span className="text-violet-300">→</span>}</div>)}
+      </div>
       <Card className="relative overflow-hidden !bg-slate-950 text-white">
         <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-500/30 blur-3xl" />
         <div className="relative max-w-3xl py-4 lg:py-8">

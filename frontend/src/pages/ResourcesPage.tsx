@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Bot, CheckCircle2, Circle, GitBranch, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react'
+import { Bot, CheckCircle2, Circle, Download, GitBranch, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api, consumeSSE } from '../api'
 import { Button, Card, EmptyState, Markdown, Mermaid, PageHeader } from '../components'
-import type { Citation, Profile, Resource } from '../types'
+import type { Citation, GenerationMeta, Profile, Resource } from '../types'
 
 const tabs = [
   ['learning_path', '学习路径'], ['lecture', '课程讲义'], ['mindmap', '思维导图'],
   ['quiz', '练习题库'], ['code_case', '代码实操'], ['ppt_outline', 'PPT 大纲'],
+  ['multimodal_resource', '动态流程图'],
 ]
 
 const defaultAttribution: Record<string, string> = {
@@ -17,6 +18,7 @@ const defaultAttribution: Record<string, string> = {
   quiz: 'QuizAgent',
   code_case: 'CodeAgent',
   ppt_outline: 'ResourceAgent',
+  multimodal_resource: 'ResourceAgent',
 }
 
 export default function ResourcesPage() {
@@ -35,6 +37,8 @@ export default function ResourcesPage() {
   const [history, setHistory] = useState<Resource[]>([])
   const [resourceId, setResourceId] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<number | null>(null)
+  const [generation, setGeneration] = useState<Record<string, GenerationMeta>>({})
+  const [error, setError] = useState('')
 
   const load = async () => {
     const [current, packs] = await Promise.all([
@@ -47,7 +51,7 @@ export default function ResourcesPage() {
   useEffect(() => { load().catch(() => null) }, [])
 
   const generate = async () => {
-    setLoading(true); setResources({}); setCitations([]); setReview(null); setWorkflow([])
+    setLoading(true); setResources({}); setCitations([]); setReview(null); setWorkflow([]); setGeneration({}); setError('')
     setProgress(1); setStage('启动总控流程')
     try {
       await consumeSSE('/api/resources/generate', { topic, profile_id: profile?.id }, (event, data) => {
@@ -59,6 +63,7 @@ export default function ResourcesPage() {
         if (event === 'resource') {
           setResources(previous => ({ ...previous, [data.type]: data.content }))
           setAttribution(previous => ({ ...previous, [data.type]: data.generated_by }))
+          setGeneration(previous => ({ ...previous, [data.type]: data.generation || {} }))
         }
         if (event === 'review') setReview(data)
         if (event === 'done') {
@@ -68,6 +73,8 @@ export default function ResourcesPage() {
           load()
         }
       })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '资源生成失败')
     } finally {
       setLoading(false)
     }
@@ -79,6 +86,7 @@ export default function ResourcesPage() {
     setCitations(item.content.citations || [])
     setWorkflow(item.content.workflow || [])
     setReview(item.review)
+    setGeneration(item.content.generation_metadata || {})
     setResourceId(item.id)
     setFeedback(null)
     setProgress(100)
@@ -86,6 +94,7 @@ export default function ResourcesPage() {
   }
 
   const content = resources[active]
+  const activeMeta = generation[active] || {}
   const rateResource = async (rating: 1 | -1) => {
     if (!resourceId) return
     await api(`/api/resources/${resourceId}/feedback`, {
@@ -106,6 +115,7 @@ export default function ResourcesPage() {
           <input value={topic} onChange={event => setTopic(event.target.value)} className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-violet-400" />
           <Button loading={loading} disabled={!profile} onClick={generate} className="lg:min-w-44">启动智能体协作</Button>
         </div>
+        {error && <div className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
         {(loading || progress > 0) && <div className="mt-5">
           <div className="mb-2 flex justify-between text-xs"><span className="font-bold text-violet-700">{agent || 'Orchestrator'} · {stage}</span><span>{progress}%</span></div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} /></div>
@@ -120,13 +130,20 @@ export default function ResourcesPage() {
           <div className="flex gap-2 overflow-x-auto border-b border-slate-100 pb-4">
             {tabs.map(([key, label]) => <button key={key} onClick={() => setActive(key)} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold ${active === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500'}`}>{label}</button>)}
           </div>
-          <div className="mt-4 flex justify-end"><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">生成智能体：{attribution[active]}</span></div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">智能体：{attribution[active]}</span>
+            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">{activeMeta.label || 'Mock 规则生成'}</span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activeMeta.rag_enhanced ? '已使用知识库证据' : '未使用知识库证据'}</span>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ${review?.checks?.human_review_required ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{review?.checks?.human_review_required ? '需要人工核验' : '规则审校通过'}</span>
+          </div>
           <div className="mt-4">
             {!content ? <EmptyState title="等待真实生成流程" text="选择学生并启动后，资源会随 SSE 事件逐项出现。" />
               : active === 'mindmap' ? <Mermaid chart={content} />
               : active === 'quiz' ? <div className="space-y-4">{content.map((question: any, index: number) => <div key={question.id} className="rounded-2xl bg-slate-50 p-4"><div className="text-xs font-bold text-violet-600">第 {index + 1} 题 · {question.knowledge_point}</div><div className="mt-2 font-bold">{question.question}</div>{question.options?.length > 0 && <div className="mt-2 grid gap-2 sm:grid-cols-2">{question.options.map((option: string) => <div key={option} className="rounded-xl bg-white px-3 py-2 text-sm">{option}</div>)}</div>}</div>)}</div>
+              : active === 'multimodal_resource' ? <iframe title={content.title} srcDoc={content.html} sandbox="" className="h-[520px] w-full rounded-2xl border border-violet-100 bg-white" />
               : <Markdown>{String(content)}</Markdown>}
           </div>
+          {resourceId && active === 'ppt_outline' && <a href={`http://localhost:8000/api/resources/${resourceId}/pptx`} className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white"><Download className="h-4 w-4" />下载个性化 PPT 文件</a>}
         </Card>
         <div className="space-y-6">
           {review && <Card>

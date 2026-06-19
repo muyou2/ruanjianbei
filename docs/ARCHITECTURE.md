@@ -6,7 +6,8 @@ flowchart LR
   API --> DB[(SQLite)]
   DB --> EVT[学习事件 / 掌握度 / 资源反馈]
   API --> KB[Knowledge Store]
-  KB --> CH[(Chroma / Hashing)]
+  KB --> CH[(Chroma / BGE Semantic)]
+  KB --> HASH[Hashing Fallback]
   API --> ORCH[Orchestrator]
   ORCH --> P[Profile Agent]
   ORCH --> K[Knowledge Agent]
@@ -34,7 +35,7 @@ profile_loaded
 
 长任务通过 SSE 返回 `progress`、`citations`、`resource`、`review` 和 `done` 事件，避免页面长时间白屏。
 
-当前 Chroma 使用本地 Hashing 向量，属于 MVP 检索；sentence-transformers 尚未接入。
+当前优先使用 `sentence-transformers` 加载 `BAAI/bge-small-zh-v1.5`，模型或依赖不可用时自动切换 Hashing MVP 检索。两种模式均由前端和 `/api/config/status` 如实展示。
 
 学习分析层新增三类可审计数据：
 

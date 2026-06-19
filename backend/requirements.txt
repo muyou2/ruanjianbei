@@ -6,3 +6,4 @@ httpx==0.28.1
 pypdf==5.5.0
 chromadb==1.0.9
 pytest==8.3.5
+python-pptx==1.0.2

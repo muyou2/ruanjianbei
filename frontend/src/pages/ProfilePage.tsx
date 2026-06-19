@@ -24,6 +24,7 @@ export default function ProfilePage() {
   const [changes, setChanges] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [generation, setGeneration] = useState<any>(null)
 
   const load = async () => {
     const [current, all] = await Promise.all([
@@ -44,6 +45,7 @@ export default function ProfilePage() {
       })
       setProfile(result.profile)
       setChanges(result.changes || [])
+      setGeneration(result.generation || null)
       await load()
     } catch (e) {
       setError((e as Error).message)
@@ -60,6 +62,7 @@ export default function ProfilePage() {
     })
     setProfile(selected)
     setChanges([])
+    setGeneration(null)
     await load()
   }
 
@@ -98,6 +101,7 @@ export default function ProfilePage() {
           <textarea value={text} onChange={event => setText(event.target.value)} className="min-h-52 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100" />
           {error && <div className="mt-3 text-sm text-rose-600">{error}</div>}
           <Button loading={loading} onClick={generate} className="mt-4 w-full"><Send className="h-4 w-4" />生成并保存画像</Button>
+          {generation && <div className={`mt-3 rounded-xl p-3 text-center text-xs font-bold ${generation.used_real_model ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>生成来源：{generation.label || 'Mock 规则生成'}{generation.fallback_used ? '（真实模型失败后已回退）' : ''}</div>}
           <p className="mt-3 text-center text-xs text-slate-400">当前状态：MVP 实现。无模型 Key 时使用输入驱动的规则抽取，不返回固定画像。</p>
         </Card>
         <div>

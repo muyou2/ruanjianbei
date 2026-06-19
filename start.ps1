@@ -66,9 +66,12 @@ if ($FrontendReady) {
         -RedirectStandardOutput $FrontendLog -RedirectStandardError $FrontendErrorLog
 }
 
-Start-Sleep -Seconds 5
-$BackendReady = Test-Url "http://localhost:8000/api/health"
-$FrontendReady = Test-Url "http://localhost:5173"
+for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    $BackendReady = Test-Url "http://localhost:8000/api/health"
+    $FrontendReady = Test-Url "http://localhost:5173"
+    if ($BackendReady -and $FrontendReady) { break }
+    Start-Sleep -Seconds 2
+}
 
 if (-not $BackendReady -or -not $FrontendReady) {
     Write-Host ""

@@ -1,68 +1,127 @@
 # 智学方舟
 
-面向中国软件杯赛题“基于大模型的个性化资源生成与学习多智能体系统开发”的可运行 Web MVP。系统以 Python 高校课程为示范，通过八个智能体完成学生画像、知识检索、资源生成、RAG 答疑、事实审校和学习评估闭环。
+面向中国软件杯赛题“基于大模型的个性化资源生成与学习多智能体系统开发”的高校 Python 个性化学习平台。
+
+```text
+画像构建 → 知识检索 → 多智能体资源生成 → RAG 智能辅导
+→ 学习评估 → 薄弱点与掌握度更新 → 动态调整
+```
 
 ## 一键启动
 
-Windows 双击 `start.bat`，或在 PowerShell 中执行：
+双击 `start.bat`，或运行：
 
 ```powershell
 .\start.ps1
 ```
 
-首次启动会创建 Python 虚拟环境并安装依赖。启动后访问：
-
 - Web：http://localhost:5173
 - OpenAPI：http://localhost:8000/docs
 
-没有配置 API Key 时，系统进入 Mock 演示模式：数据库、检索、智能体流程、测评和画像回写仍真实执行；需要大模型生成的文本使用“画像驱动模板”，不会冒充真实模型结果。
+无 API Key 时自动进入 Mock 模式；数据库、检索、PPT 导出、测评、画像写回和学习轨迹仍真实执行。
 
-## 当前功能状态表
+## 功能状态
 
-| 功能 | 状态 | 当前真实实现 |
+| 功能 | 状态 | 实现边界 |
 | --- | --- | --- |
-| 自然语言学生画像 | MVP 实现 | 无 Key 时根据输入文本规则抽取八维画像；有 Key 时通过 `LLMService` 结构化抽取 |
-| 三类演示学生切换 | 已实现 | `demo_basic`、`demo_practice`、`demo_exam` 独立保存并可切换 |
-| 画像 SQLite 持久化 | 已实现 | 每个画像独立保存，当前画像通过 `is_active` 管理 |
-| 课程资料上传与切块 | 已实现 | TXT、MD、可提取文本的 PDF |
-| Chroma 持久化 | 已实现 | 文档片段和 384 维 Hashing 向量真实写入 Chroma |
-| 语义检索 | MVP 实现 | 当前是 Hashing + Chroma，不是 sentence-transformers 强语义模型 |
-| 八智能体 | MVP 实现 | 八个独立 Python Agent 类和明确状态流；尚未接入真实 LangGraph |
-| 六类资源生成 | Mock 演示 / 待接入真实模型 | 无 Key 时使用画像、薄弱点、偏好、主题和知识库驱动模板；配置模型后走真实生成 |
-| RAG 答疑 | MVP 实现 | 真实执行 top-k 检索、引用展示和证据阈值；无 Key 时回答文本为模板 |
-| 证据不足阻断 | 已实现 | 检索证据不足时停止扩展回答并提示人工核验 |
-| 选择/判断题评分 | 已实现 | 精确匹配自动判分 |
-| 简答题评分 | MVP 实现 | 关键词覆盖度评分，前端明确标注 |
-| 代码题评分 | MVP 实现 | 关键语句检查，不执行代码，要求人工核验 |
-| 测评保存与画像回写 | 已实现 | 评估写入 SQLite，错误知识点写回 `weak_points` 和 `mistake_history` |
-| Dashboard 动态变化 | 已实现 | 仅展示当前学生画像、资源、最近测评、错题与薄弱点 |
-| 知识点掌握度 | MVP 实现 | 逐题得分按知识点滚动写入 SQLite，不只保留一次总分 |
-| 学习行为轨迹 | 已实现 | 画像、资源生成、答疑、测评和反馈记录为轻量 xAPI 风格事件 |
-| 资源使用反馈 | MVP 实现 | 学生可标记“有帮助/需要调整”，结果真实持久化并进入 Dashboard |
-| ReviewAgent | MVP 实现 | 实时规则检查完整性、引用、证据、夸大表达、画像适配和人工核验需求 |
-| 讯飞星火 | 待接入真实模型 | 已预留 OpenAI-compatible 网关配置；官方非兼容鉴权需新增适配器 |
-| 视频/动画生成 | 待扩展 | 当前未实现，前端和 README 不宣传为已完成 |
-| UCI 数据集 | 扩展分析 Demo | 非核心闭环，不参与当前学生推荐、测评或画像 |
+| 八维画像与 SQLite | 已实现 | 离线规则抽取；配置模型后优先真实结构化抽取 |
+| 文档上传、切块、Chroma | 已实现 | TXT、MD、可提取文本 PDF |
+| sentence-transformers 语义检索 | 已实现 / 可回退 | 默认 BGE 中文模型；失败自动回退 Hashing MVP |
+| 八智能体流水线 | 已实现 | 七阶段 SSE、输出归因和资源包持久化 |
+| 统一真实模型调用 | 已实现 | xfyun、OpenAI-compatible、DeepSeek、Qwen；失败显式回退 |
+| 个性化资源与 RAG 答疑 | 已实现 | 显示智能体、生成来源、知识库证据和核验状态 |
+| PPTX 文件导出 | 已实现 | 生成六页个性化演示文稿 |
+| HTML 动态流程图 | MVP 实现 | Resource Center 直接预览 Pandas 清洗动画 |
+| 选择/判断题评分 | 已实现 | 精确匹配 |
+| 简答题、代码题 | MVP 实现 | 关键词/关键语句检查，不执行代码 |
+| 掌握度、推荐 | MVP 实现 | 基于逐题得分、轨迹与资源反馈 |
+| 画像更新与 Dashboard | 已实现 | 薄弱点、掌握度和学习事件真实写回 |
+| 视频、语音、Docker 沙箱 | 待扩展 | 当前不宣传为已完成 |
+| 教师端、登录、DKT/BKT、复杂 checkpoint | 待扩展 | 不属于初赛版本 |
 
-## 项目结构
+## 技术架构
+
+- React + Vite + TypeScript + Tailwind CSS
+- FastAPI + SQLite + Chroma
+- sentence-transformers + `BAAI/bge-small-zh-v1.5`
+- python-pptx
+- 统一 `LLMService`，Agent 不直接请求外部 API
+
+## 多智能体与 RAG
 
 ```text
-├─ frontend/       React + Vite + TypeScript + Tailwind CSS
-├─ backend/        FastAPI + SQLite + Chroma + 多智能体
-├─ course_data/    内置 Python 课程知识库
-├─ docs/           架构、API、测试与演示说明
-├─ start.ps1
-└─ start.bat
+profile_loaded → knowledge_retrieved → plan_generated
+→ resources_generated → quiz_generated → review_completed → saved
 ```
 
-## 演示顺序
+```text
+用户问题 → 语义向量/Hashing → Chroma top-k → 证据阈值
+→ LLMService → 带来源、相关度和检索模式的回答
+```
 
-1. 在“学生画像”输入自然语言学习需求。
-2. 在“课程知识库”查看内置资料或上传自定义资料。
-3. 在“资源生成”观察智能体协作并生成六类资源。
-4. 在“智能答疑”提问并查看知识库引用。
-5. 在“学习评估”答题，查看薄弱点回写画像。
+证据不足时，系统停止确定性生成并提示补充课程资料或人工核验。
 
-UCI Student Performance 仅保留在知识库页的“扩展分析 Demo”，不是本系统真实高校 Python 学习数据。研究依据与竞品调研见 [docs/RESEARCH.md](docs/RESEARCH.md)。
+## 配置真实大模型
 
-赛题要求与代码证据的逐项映射见 [docs/REQUIREMENT_TRACEABILITY.md](docs/REQUIREMENT_TRACEABILITY.md)，AI Coding 使用边界见 [docs/AI_CODING_DISCLOSURE.md](docs/AI_CODING_DISCLOSURE.md)。详细配置见 [backend/README.md](backend/README.md) 与 [frontend/README.md](frontend/README.md)。
+复制 `backend/.env.example` 为 `backend/.env`。
+
+讯飞星火：
+
+```env
+LLM_PROVIDER=xfyun
+XFYUN_API_KEY=你的 API Key
+XFYUN_BASE_URL=https://spark-api-open.xf-yun.com/v1
+XFYUN_MODEL=generalv3.5
+```
+
+还支持：
+
+```env
+LLM_PROVIDER=mock
+LLM_PROVIDER=openai_compatible
+LLM_PROVIDER=deepseek
+LLM_PROVIDER=qwen
+```
+
+真实调用失败时自动回退，并在前端标记“Mock 规则生成 / 真实模型失败后已回退”。
+
+## 语义检索
+
+```powershell
+backend\.venv\Scripts\python.exe -m pip install -r backend\requirements-semantic.txt
+```
+
+```env
+EMBEDDING_PROVIDER=auto
+EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+EMBEDDING_DEVICE=cpu
+```
+
+知识库页会如实显示“语义向量检索”或“Hashing MVP 检索”。
+
+## PPT 与轻量多模态
+
+- 在资源页的“PPT 大纲”Tab 下载 `.pptx`。
+- PPT 包含标题、目标、知识讲解、代码、练习和下一步建议。
+- “动态流程图”Tab 展示 Pandas 数据清洗六步 HTML/CSS 动画。
+- 视频生成和讯飞语音合成为待扩展能力。
+
+## 七分钟演示
+
+1. 切换 `demo_basic` 并输入指定学生描述。
+2. 展示八维画像和课程知识库。
+3. 检索 `dropna 和 fillna 如何选择`，展示 top-k、来源和模式。
+4. 生成“Pandas 数据清洗与分析综合实践”资源包。
+5. 展示七阶段时间线、七类资源和生成来源。
+6. 下载 PPTX，预览动态流程图。
+7. Tutor Chat 提问并展开引用。
+8. 完成测评，展示逐题得分与画像写回。
+9. 返回 Dashboard 展示掌握度和学习轨迹变化。
+
+## 内置课程与不足
+
+`course_data/` 为项目原创示例资料，覆盖 17 个 Python 与数据分析主题，不声称来自真实高校教材。
+
+当前不足：真实模型质量依赖外部服务；首次下载 BGE 需要网络；简答、代码题、掌握度仍为 MVP；HTML 动画不等于真实视频；教师审核端、账号体系、安全代码沙箱和复杂知识追踪尚未实现。
+
+更多资料：[赛题追踪](docs/REQUIREMENT_TRACEABILITY.md) · [演示脚本](docs/DEMO_SCRIPT.md) · [讯飞配置](docs/SPARK_INTEGRATION.md) · [AI Coding 说明](docs/AI_CODING_DISCLOSURE.md)

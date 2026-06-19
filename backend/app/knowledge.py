@@ -68,22 +68,50 @@ def cosine(a: list[float], b: list[float]) -> float:
 class KnowledgeStore:
     def __init__(self) -> None:
         self.collection = None
+        self.embedding_model = None
         self.backend = "local-hashing"
+        self.mode_label = "Hashing MVP 检索"
+        self.embedding_error = None
+        settings = get_settings()
+        if settings.embedding_provider.lower() != "hashing":
+            try:
+                from sentence_transformers import SentenceTransformer
+
+                self.embedding_model = SentenceTransformer(
+                    settings.embedding_model,
+                    device=settings.embedding_device,
+                    local_files_only=True,
+                )
+                self.backend = "chroma-semantic"
+                self.mode_label = "语义向量检索"
+            except Exception as error:
+                self.embedding_error = f"{type(error).__name__}: {str(error)[:160]}"
         try:
             import chromadb
             from chromadb.config import Settings
 
             client = chromadb.PersistentClient(
-                path=str(get_settings().chroma_dir),
+                path=str(settings.chroma_dir),
                 settings=Settings(anonymized_telemetry=False),
             )
             self.collection = client.get_or_create_collection(
-                "python_course",
+                "python_course_semantic" if self.embedding_model else "python_course_hashing",
                 metadata={"hnsw:space": "cosine"},
             )
-            self.backend = "chroma-hashing"
+            if not self.embedding_model:
+                self.backend = "chroma-hashing"
         except Exception:
             self.collection = None
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if self.embedding_model:
+            vectors = self.embedding_model.encode(
+                texts,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            return vectors.tolist()
+        return [hashing_vector(text) for text in texts]
 
     def upsert(self, document_id: int, chunks: list[dict[str, Any]]) -> None:
         if not self.collection or not chunks:
@@ -91,7 +119,7 @@ class KnowledgeStore:
         self.collection.upsert(
             ids=[c["id"] for c in chunks],
             documents=[c["content"] for c in chunks],
-            embeddings=[hashing_vector(c["content"]) for c in chunks],
+            embeddings=self.embed([c["content"] for c in chunks]),
             metadatas=[
                 {"document_id": document_id, "title": c["title"], "position": c["position"]}
                 for c in chunks
@@ -108,7 +136,7 @@ class KnowledgeStore:
     def search(self, query: str, top_k: int = 4) -> list[dict[str, Any]]:
         if self.collection and self.collection.count() > 0:
             result = self.collection.query(
-                query_embeddings=[hashing_vector(query)],
+                query_embeddings=self.embed([query]),
                 n_results=min(top_k, self.collection.count()),
                 include=["documents", "metadatas", "distances"],
             )
@@ -127,6 +155,7 @@ class KnowledgeStore:
                         "content": content,
                         "score": round(max(0.0, 1.0 - float(distance)), 4),
                         "retrieval_backend": self.backend,
+                        "retrieval_mode": self.mode_label,
                     }
                 )
             return items
@@ -143,9 +172,30 @@ class KnowledgeStore:
                     "content": chunk["content"],
                     "score": round(max(0.0, score), 4),
                     "retrieval_backend": self.backend,
+                    "retrieval_mode": self.mode_label,
                 }
             )
         return sorted(scored, key=lambda item: item["score"], reverse=True)[:top_k]
+
+    def ensure_index(self) -> None:
+        chunks = list_chunks()
+        if self.collection and self.collection.count() == len(chunks):
+            return
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        for chunk in chunks:
+            grouped.setdefault(int(chunk["document_id"]), []).append(chunk)
+        for document_id, items in grouped.items():
+            self.upsert(document_id, items)
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "backend": self.backend,
+            "mode": self.mode_label,
+            "embedding_model": (
+                get_settings().embedding_model if self.embedding_model else None
+            ),
+            "fallback_reason": self.embedding_error,
+        }
 
 
 knowledge_store = KnowledgeStore()

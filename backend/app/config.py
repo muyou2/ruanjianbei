@@ -13,15 +13,16 @@ class Settings(BaseSettings):
     app_name: str = "智学方舟 API"
     app_env: str = "development"
     frontend_origin: str = "http://localhost:5173"
-    llm_provider: str = "auto"
+    llm_provider: str = "mock"
+    llm_timeout_seconds: int = 60
 
-    spark_api_key: str = ""
-    spark_base_url: str = ""
-    spark_model: str = "generalv3.5"
+    xfyun_api_key: str = ""
+    xfyun_base_url: str = "https://spark-api-open.xf-yun.com/v1"
+    xfyun_model: str = "generalv3.5"
 
-    openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4o-mini"
+    openai_compatible_api_key: str = ""
+    openai_compatible_base_url: str = ""
+    openai_compatible_model: str = ""
 
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
     qwen_api_key: str = ""
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     qwen_model: str = "qwen-plus"
+
+    embedding_provider: str = "auto"
+    embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    embedding_device: str = "cpu"
 
     model_config = SettingsConfigDict(
         env_file=(BASE_DIR / ".env", PROJECT_DIR / ".env"),
@@ -49,6 +54,10 @@ class Settings(BaseSettings):
     def chroma_dir(self) -> Path:
         return RUNTIME_DIR / "chroma"
 
+    @property
+    def exports_dir(self) -> Path:
+        return RUNTIME_DIR / "exports"
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -56,4 +65,5 @@ def get_settings() -> Settings:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
     settings.chroma_dir.mkdir(parents=True, exist_ok=True)
+    settings.exports_dir.mkdir(parents=True, exist_ok=True)
     return settings

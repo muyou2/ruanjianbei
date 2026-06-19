@@ -21,6 +21,8 @@ export type Citation = {
   title: string
   content: string
   score: number
+  retrieval_backend?: string
+  retrieval_mode?: string
 }
 
 export type QuizQuestion = {
@@ -39,4 +41,14 @@ export type Resource = {
   content: Record<string, any>
   review: Record<string, any>
   created_at: string
+}
+
+export type GenerationMeta = {
+  provider?: string
+  model?: string
+  label?: string
+  used_real_model?: boolean
+  fallback_used?: boolean
+  rag_enhanced?: boolean
+  error?: string | null
 }
