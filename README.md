@@ -36,6 +36,9 @@ Windows 双击 `start.bat`，或在 PowerShell 中执行：
 | 代码题评分 | MVP 实现 | 关键语句检查，不执行代码，要求人工核验 |
 | 测评保存与画像回写 | 已实现 | 评估写入 SQLite，错误知识点写回 `weak_points` 和 `mistake_history` |
 | Dashboard 动态变化 | 已实现 | 仅展示当前学生画像、资源、最近测评、错题与薄弱点 |
+| 知识点掌握度 | MVP 实现 | 逐题得分按知识点滚动写入 SQLite，不只保留一次总分 |
+| 学习行为轨迹 | 已实现 | 画像、资源生成、答疑、测评和反馈记录为轻量 xAPI 风格事件 |
+| 资源使用反馈 | MVP 实现 | 学生可标记“有帮助/需要调整”，结果真实持久化并进入 Dashboard |
 | ReviewAgent | MVP 实现 | 实时规则检查完整性、引用、证据、夸大表达、画像适配和人工核验需求 |
 | 讯飞星火 | 待接入真实模型 | 已预留 OpenAI-compatible 网关配置；官方非兼容鉴权需新增适配器 |
 | 视频/动画生成 | 待扩展 | 当前未实现，前端和 README 不宣传为已完成 |
@@ -62,4 +65,4 @@ Windows 双击 `start.bat`，或在 PowerShell 中执行：
 
 UCI Student Performance 仅保留在知识库页的“扩展分析 Demo”，不是本系统真实高校 Python 学习数据。研究依据与竞品调研见 [docs/RESEARCH.md](docs/RESEARCH.md)。
 
-详细配置见 [backend/README.md](backend/README.md) 与 [frontend/README.md](frontend/README.md)。
+赛题要求与代码证据的逐项映射见 [docs/REQUIREMENT_TRACEABILITY.md](docs/REQUIREMENT_TRACEABILITY.md)，AI Coding 使用边界见 [docs/AI_CODING_DISCLOSURE.md](docs/AI_CODING_DISCLOSURE.md)。详细配置见 [backend/README.md](backend/README.md) 与 [frontend/README.md](frontend/README.md)。

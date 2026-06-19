@@ -108,9 +108,24 @@ def test_complete_python_learning_loop():
         assert report["weak_points"]
         assert report["profile_changes"]
         assert any(item["manual_review"] for item in report["detail"])
+        assert report["mastery"]
+        assert all("knowledge_point" in item for item in report["detail"])
+
+        feedback = client.post(
+            f"/api/resources/{resource['id']}/feedback",
+            json={"rating": 1, "comment": "图解与代码案例对当前学习有帮助"},
+        )
+        assert feedback.status_code == 200
+
+        progress = client.get("/api/learning/progress").json()["data"]
+        assert progress["mastery"]
+        verbs = {item["verb"] for item in progress["events"]}
+        assert {"created", "generated", "asked", "completed", "rated"}.issubset(verbs)
 
         updated = client.get("/api/profiles").json()["data"]
         assert len(updated["mistake_history"]) > len(profile["mistake_history"])
 
         dashboard = client.get("/api/analytics/overview").json()["data"]["personal_signals"]
         assert dashboard["latest_evaluation"]["score"] == report["score"]
+        assert dashboard["mastery"]
+        assert dashboard["resource_feedback"]["helpful"] >= 1

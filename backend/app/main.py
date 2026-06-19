@@ -25,15 +25,21 @@ from .repositories import (
     list_documents,
     list_profiles,
     list_resources,
+    list_learning_events,
+    list_mastery,
+    record_learning_event,
     save_evaluation,
     save_message,
     save_profile,
+    save_resource_feedback,
+    update_mastery,
 )
 from .schemas import (
     EvaluationSubmitRequest,
     KnowledgeSearchRequest,
     ProfileGenerateRequest,
     ProfileSelectRequest,
+    ResourceFeedbackRequest,
     ResourceGenerateRequest,
     StudentProfile,
     TutorRequest,
@@ -60,11 +66,11 @@ def ingest_path(path: Path, original_name: str) -> dict:
 
 
 def seed_course() -> None:
-    if list_documents():
-        return
+    existing = {item["filename"] for item in list_documents()}
     course_dir = PROJECT_DIR / "course_data"
     for source in sorted(course_dir.glob("*.md")):
-        ingest_path(source, source.name)
+        if source.name not in existing:
+            ingest_path(source, source.name)
 
 
 def seed_demo_profiles() -> None:
@@ -152,6 +158,13 @@ async def profile_generate(payload: ProfileGenerateRequest):
     before = get_profile()
     profile = await ProfileAgent().run(payload.text, payload.display_name)
     saved = save_profile(profile)
+    record_learning_event(
+        saved.get("id"),
+        "created",
+        "student_profile",
+        str(saved.get("id")),
+        {"display_name": saved.get("display_name"), "weak_points": saved.get("weak_points")},
+    )
     return response(
         {
             "profile": saved,
@@ -225,6 +238,31 @@ def resource_get(resource_id: int):
     if not item:
         raise HTTPException(404, "资源包不存在")
     return response(item)
+
+
+@app.post("/api/resources/{resource_id}/feedback")
+def resource_feedback(resource_id: int, payload: ResourceFeedbackRequest):
+    resource = get_resource(resource_id)
+    if not resource:
+        raise HTTPException(404, "资源包不存在")
+    profile = get_profile()
+    if not profile or resource.get("profile_id") != profile.get("id"):
+        raise HTTPException(403, "只能评价当前学生自己的资源包")
+    saved = save_resource_feedback(profile["id"], resource_id, payload.rating, payload.comment)
+    return response(saved, "资源反馈已保存，将用于后续学习建议")
+
+
+@app.get("/api/learning/progress")
+def learning_progress():
+    profile = get_profile()
+    profile_id = profile.get("id") if profile else None
+    return response(
+        {
+            "profile_id": profile_id,
+            "mastery": list_mastery(profile_id),
+            "events": list_learning_events(profile_id, 20),
+        }
+    )
 
 
 @app.get("/api/quizzes")
@@ -315,6 +353,7 @@ def evaluation_submit(payload: EvaluationSubmitRequest):
         if not question:
             continue
         scored = score_question(question, item.answer)
+        scored["knowledge_point"] = question["knowledge_point"]
         earned += scored["points"]
         if not scored["correct"]:
             weak_points.append(question["knowledge_point"])
@@ -344,6 +383,7 @@ def evaluation_submit(payload: EvaluationSubmitRequest):
         suggestions,
         detail,
     )
+    mastery = update_mastery(profile.get("id") if profile else None, detail)
     profile_after = profile or profile_before
     return response(
         {
@@ -355,6 +395,7 @@ def evaluation_submit(payload: EvaluationSubmitRequest):
             "weak_points": weak_points,
             "suggestions": suggestions,
             "detail": detail,
+            "mastery": mastery,
             "profile_before": profile_before,
             "profile_after": profile_after,
             "profile_changes": profile_changes(profile_before, profile_after),

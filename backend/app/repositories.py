@@ -135,7 +135,15 @@ def save_resource(topic: str, profile_id: int | None, content: dict, review: dic
             "INSERT INTO resources(topic,profile_id,status,content,review,created_at) VALUES(?,?,?,?,?,?)",
             (topic, profile_id, "ready", json_dump(content), json_dump(review), utc_now()),
         )
-        return int(cursor.lastrowid)
+        resource_id = int(cursor.lastrowid)
+    record_learning_event(
+        profile_id,
+        "generated",
+        "resource_package",
+        str(resource_id),
+        {"topic": topic, "review_status": review.get("status")},
+    )
+    return resource_id
 
 
 def list_resources(profile_id: int | None = None) -> list[dict[str, Any]]:
@@ -189,7 +197,15 @@ def save_evaluation(
                 utc_now(),
             ),
         )
-        return int(cursor.lastrowid)
+        evaluation_id = int(cursor.lastrowid)
+    record_learning_event(
+        profile_id,
+        "completed",
+        "evaluation",
+        str(evaluation_id),
+        {"resource_id": resource_id, "score": score, "weak_points": weak_points},
+    )
+    return evaluation_id
 
 
 def latest_evaluation(profile_id: int | None) -> dict[str, Any] | None:
@@ -221,3 +237,169 @@ def save_message(
             VALUES(?,?,?,?,?)""",
             (profile_id, role, content, json_dump(citations or []), utc_now()),
         )
+    if role == "user":
+        record_learning_event(
+            profile_id,
+            "asked",
+            "tutor_question",
+            None,
+            {"question": content[:160], "citation_count": len(citations or [])},
+        )
+
+
+def record_learning_event(
+    profile_id: int | None,
+    verb: str,
+    object_type: str,
+    object_id: str | None = None,
+    result: dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
+) -> int:
+    with connect() as conn:
+        cursor = conn.execute(
+            """INSERT INTO learning_events
+            (profile_id,verb,object_type,object_id,result,context,created_at)
+            VALUES(?,?,?,?,?,?,?)""",
+            (
+                profile_id,
+                verb,
+                object_type,
+                object_id,
+                json_dump(result or {}),
+                json_dump(context or {}),
+                utc_now(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+
+def list_learning_events(profile_id: int | None, limit: int = 12) -> list[dict[str, Any]]:
+    if profile_id is None:
+        return []
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT * FROM learning_events WHERE profile_id=?
+            ORDER BY id DESC LIMIT ?""",
+            (profile_id, limit),
+        ).fetchall()
+    events = []
+    for row in rows:
+        item = dict(row)
+        item["result"] = json_load(item["result"], {})
+        item["context"] = json_load(item["context"], {})
+        events.append(item)
+    return events
+
+
+def update_mastery(
+    profile_id: int | None,
+    detail: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if profile_id is None:
+        return []
+    now = utc_now()
+    with connect() as conn:
+        for item in detail:
+            knowledge_point = item.get("knowledge_point")
+            if not knowledge_point:
+                continue
+            percentage = round(
+                float(item.get("points", 0)) / max(float(item.get("max_points", 25)), 1) * 100,
+                1,
+            )
+            current = conn.execute(
+                """SELECT * FROM mastery_records
+                WHERE profile_id=? AND knowledge_point=?""",
+                (profile_id, knowledge_point),
+            ).fetchone()
+            if current:
+                attempts = int(current["attempts"]) + 1
+                mastery = round(
+                    (float(current["mastery"]) * int(current["attempts"]) + percentage) / attempts,
+                    1,
+                )
+                conn.execute(
+                    """UPDATE mastery_records SET mastery=?, attempts=?,
+                    correct_count=?, last_score=?, updated_at=?
+                    WHERE profile_id=? AND knowledge_point=?""",
+                    (
+                        mastery,
+                        attempts,
+                        int(current["correct_count"]) + int(bool(item.get("correct"))),
+                        percentage,
+                        now,
+                        profile_id,
+                        knowledge_point,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO mastery_records
+                    (profile_id,knowledge_point,mastery,attempts,correct_count,last_score,updated_at)
+                    VALUES(?,?,?,?,?,?,?)""",
+                    (
+                        profile_id,
+                        knowledge_point,
+                        percentage,
+                        1,
+                        int(bool(item.get("correct"))),
+                        percentage,
+                        now,
+                    ),
+                )
+    return list_mastery(profile_id)
+
+
+def list_mastery(profile_id: int | None) -> list[dict[str, Any]]:
+    if profile_id is None:
+        return []
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT knowledge_point,mastery,attempts,correct_count,last_score,updated_at
+            FROM mastery_records WHERE profile_id=?
+            ORDER BY mastery ASC, updated_at DESC""",
+            (profile_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_resource_feedback(
+    profile_id: int,
+    resource_id: int,
+    rating: int,
+    comment: str = "",
+) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO resource_feedback(profile_id,resource_id,rating,comment,created_at)
+            VALUES(?,?,?,?,?)
+            ON CONFLICT(profile_id,resource_id) DO UPDATE SET
+            rating=excluded.rating, comment=excluded.comment, created_at=excluded.created_at""",
+            (profile_id, resource_id, rating, comment, utc_now()),
+        )
+    record_learning_event(
+        profile_id,
+        "rated",
+        "resource_package",
+        str(resource_id),
+        {"rating": rating, "comment": comment},
+    )
+    return {"resource_id": resource_id, "rating": rating, "comment": comment}
+
+
+def feedback_summary(profile_id: int | None) -> dict[str, Any]:
+    if profile_id is None:
+        return {"total": 0, "helpful": 0, "needs_adjustment": 0}
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) AS total,
+            SUM(CASE WHEN rating > 0 THEN 1 ELSE 0 END) AS helpful,
+            SUM(CASE WHEN rating < 0 THEN 1 ELSE 0 END) AS needs_adjustment
+            FROM resource_feedback WHERE profile_id=?""",
+            (profile_id,),
+        ).fetchone()
+    return {
+        "total": int(row["total"] or 0),
+        "helpful": int(row["helpful"] or 0),
+        "needs_adjustment": int(row["needs_adjustment"] or 0),
+    }

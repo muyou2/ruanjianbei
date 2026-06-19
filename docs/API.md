@@ -13,8 +13,10 @@
 | POST | `/api/knowledge/search` | 课程片段检索 |
 | POST | `/api/resources/generate` | SSE 生成资源包 |
 | GET | `/api/resources` | 历史资源包 |
+| POST | `/api/resources/{id}/feedback` | 保存当前学生的资源使用反馈 |
 | POST | `/api/tutor/chat` | SSE RAG 答疑 |
 | GET | `/api/quizzes` | 获取题目 |
 | POST | `/api/evaluations/submit` | 批改与画像回写 |
+| GET | `/api/learning/progress` | 知识点掌握度与学习行为轨迹 |
 
 完整交互模型以运行时 `/docs` 为准。

@@ -45,6 +45,26 @@ CREATE TABLE IF NOT EXISTS conversations (
   profile_id INTEGER, role TEXT NOT NULL, content TEXT NOT NULL, citations TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS learning_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER, verb TEXT NOT NULL, object_type TEXT NOT NULL,
+  object_id TEXT, result TEXT NOT NULL, context TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mastery_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL, knowledge_point TEXT NOT NULL,
+  mastery REAL NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
+  correct_count INTEGER NOT NULL DEFAULT 0, last_score REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  UNIQUE(profile_id, knowledge_point)
+);
+CREATE TABLE IF NOT EXISTS resource_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL, resource_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL, comment TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  UNIQUE(profile_id, resource_id)
+);
 """
 
 

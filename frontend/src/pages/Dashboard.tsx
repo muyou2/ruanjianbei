@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, BookMarked, BrainCircuit, ChartNoAxesCombined, Files } from 'lucide-react'
+import { Activity, ArrowRight, BookMarked, BrainCircuit, ChartNoAxesCombined, Files } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { Card, PageHeader } from '../components'
@@ -26,6 +26,14 @@ export default function Dashboard() {
   }, [])
 
   const latestScore = signals?.latest_evaluation?.score
+  const mastery = signals?.mastery || []
+  const eventLabel: Record<string, string> = {
+    created: '创建学生画像',
+    generated: '生成资源包',
+    asked: '向智能助教提问',
+    completed: '完成学习评估',
+    rated: '评价学习资源',
+  }
   const stats = [
     { label: '当前画像', value: profile ? '8 维' : '未创建', icon: BrainCircuit, color: 'from-violet-500 to-fuchsia-500' },
     { label: '课程资料', value: `${documents.length} 份`, icon: Files, color: 'from-blue-500 to-cyan-500' },
@@ -68,6 +76,29 @@ export default function Dashboard() {
           {profile?.mistake_history?.length ? <div className="mt-4 space-y-2">{profile.mistake_history.slice(-5).reverse().map((item, index) => <div key={`${item}-${index}`} className="rounded-2xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">{item}</div>)}</div>
             : <div className="mt-4 rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">暂无错题记录。完成学习评估后，对应知识点会写回这里。</div>}
           {signals?.latest_evaluation && <div className="mt-4 border-t border-slate-100 pt-4 text-xs leading-6 text-slate-500">最近测评：{signals.latest_evaluation.score} 分<br />识别薄弱点：{signals.latest_evaluation.weak_points.join('、') || '无'}</div>}
+        </Card>
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+        <Card>
+          <div className="flex items-center justify-between"><h3 className="font-black">知识点掌握度</h3><span className="text-xs text-slate-400">基于真实逐题得分滚动计算</span></div>
+          <div className="mt-4 space-y-4">
+            {mastery.slice(0, 6).map((item: any) => <div key={item.knowledge_point}>
+              <div className="mb-1.5 flex justify-between text-xs"><span className="font-bold">{item.knowledge_point}</span><span className={item.mastery < 60 ? 'text-rose-600' : 'text-emerald-600'}>{item.mastery}% · {item.attempts} 次</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${item.mastery < 60 ? 'bg-gradient-to-r from-rose-400 to-orange-400' : 'bg-gradient-to-r from-emerald-400 to-teal-500'}`} style={{ width: `${item.mastery}%` }} /></div>
+            </div>)}
+            {!mastery.length && <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">完成一次测评后，这里会形成按知识点拆分的掌握度，而不只显示总分。</div>}
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-violet-600" /><h3 className="font-black">近期学习轨迹</h3></div>
+          <div className="mt-4 space-y-3">
+            {(signals?.recent_events || []).slice(0, 6).map((item: any) => <div key={item.id} className="flex gap-3 rounded-2xl bg-slate-50 p-3">
+              <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-violet-500" />
+              <div><div className="text-sm font-bold">{eventLabel[item.verb] || item.verb}</div><div className="mt-1 text-xs text-slate-400">{new Date(item.created_at).toLocaleString()}</div></div>
+            </div>)}
+            {!signals?.recent_events?.length && <div className="text-sm text-slate-500">尚无学习行为记录。</div>}
+          </div>
+          <div className="mt-4 rounded-2xl bg-violet-50 p-3 text-xs text-violet-700">资源反馈：有帮助 {signals?.resource_feedback?.helpful || 0} 次，需要调整 {signals?.resource_feedback?.needs_adjustment || 0} 次。</div>
         </Card>
       </div>
       <Card className="mt-6">

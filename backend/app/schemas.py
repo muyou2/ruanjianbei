@@ -54,6 +54,11 @@ class ResourceGenerateRequest(BaseModel):
     profile_id: int | None = None
 
 
+class ResourceFeedbackRequest(BaseModel):
+    rating: Literal[-1, 1]
+    comment: str = Field(default="", max_length=500)
+
+
 class TutorRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     mode: Literal["socratic", "explain"] = "socratic"

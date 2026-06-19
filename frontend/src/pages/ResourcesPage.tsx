@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, CheckCircle2, Circle, GitBranch, ShieldCheck, UserRound } from 'lucide-react'
+import { Bot, CheckCircle2, Circle, GitBranch, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api, consumeSSE } from '../api'
 import { Button, Card, EmptyState, Markdown, Mermaid, PageHeader } from '../components'
@@ -33,6 +33,8 @@ export default function ResourcesPage() {
   const [review, setReview] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<Resource[]>([])
+  const [resourceId, setResourceId] = useState<number | null>(null)
+  const [feedback, setFeedback] = useState<number | null>(null)
 
   const load = async () => {
     const [current, packs] = await Promise.all([
@@ -60,6 +62,8 @@ export default function ResourcesPage() {
         }
         if (event === 'review') setReview(data)
         if (event === 'done') {
+          setResourceId(data.resource_id)
+          setFeedback(null)
           setProgress(100); setStage(data.message); setWorkflow(data.workflow || [])
           load()
         }
@@ -75,11 +79,21 @@ export default function ResourcesPage() {
     setCitations(item.content.citations || [])
     setWorkflow(item.content.workflow || [])
     setReview(item.review)
+    setResourceId(item.id)
+    setFeedback(null)
     setProgress(100)
     setStage('已加载历史资源包')
   }
 
   const content = resources[active]
+  const rateResource = async (rating: 1 | -1) => {
+    if (!resourceId) return
+    await api(`/api/resources/${resourceId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ rating }),
+    })
+    setFeedback(rating)
+  }
   return (
     <>
       <PageHeader eyebrow="Multi-Agent Orchestrator" title="可追踪、可归因的多智能体资源生成" description="每个阶段、智能体输出和资源归属都会写入资源包。生成内容同时使用当前画像、知识库、历史薄弱点、主题和资源偏好。" />
@@ -120,6 +134,14 @@ export default function ResourcesPage() {
             <div className="mt-4 flex items-end justify-between"><div className="text-4xl font-black">{review.score}<span className="text-sm text-slate-400"> / 100</span></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${review.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{review.status}</span></div>
             {review.checks && <div className="mt-4 space-y-2">{Object.entries(review.checks).map(([name, passed]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs"><span>{name}</span><span className={passed && name !== 'human_review_required' ? 'text-emerald-600' : 'text-amber-600'}>{String(passed)}</span></div>)}</div>}
             {review.warnings?.map((warning: string) => <div key={warning} className="mt-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-700">{warning}</div>)}
+          </Card>}
+          {resourceId && <Card>
+            <h3 className="font-black">资源使用反馈</h3>
+            <p className="mt-2 text-xs leading-5 text-slate-500">反馈真实写入学习记录，用于判断资源是否需要调整，不用于虚构“满意度”。</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button onClick={() => rateResource(1)} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${feedback === 1 ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'}`}><ThumbsUp className="h-4 w-4" />有帮助</button>
+              <button onClick={() => rateResource(-1)} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${feedback === -1 ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'}`}><ThumbsDown className="h-4 w-4" />需要调整</button>
+            </div>
           </Card>}
           <Card>
             <div className="flex items-center gap-2"><GitBranch className="text-violet-600" /><h3 className="font-black">RAG 证据</h3></div>

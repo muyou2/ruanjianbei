@@ -4,6 +4,7 @@
 flowchart LR
   UI[React Web] --> API[FastAPI]
   API --> DB[(SQLite)]
+  DB --> EVT[学习事件 / 掌握度 / 资源反馈]
   API --> KB[Knowledge Store]
   KB --> CH[(Chroma / Hashing)]
   API --> ORCH[Orchestrator]
@@ -34,3 +35,9 @@ profile_loaded
 长任务通过 SSE 返回 `progress`、`citations`、`resource`、`review` 和 `done` 事件，避免页面长时间白屏。
 
 当前 Chroma 使用本地 Hashing 向量，属于 MVP 检索；sentence-transformers 尚未接入。
+
+学习分析层新增三类可审计数据：
+
+- `learning_events`：采用轻量 actor（当前画像）—verb—object 结构记录真实学习行为，设计思想参考 xAPI，但不宣称完整兼容。
+- `mastery_records`：按知识点累计真实逐题得分、尝试次数和最近得分。
+- `resource_feedback`：记录资源包是否有帮助，为后续推荐策略提供学生反馈证据。
