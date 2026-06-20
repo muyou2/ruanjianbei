@@ -105,6 +105,20 @@ def test_complete_python_learning_loop():
         ]:
             assert agent in resource["content"]["agent_outputs"]
 
+        plan = client.get(
+            f"/api/learning/tasks?resource_id={resource['id']}"
+        ).json()["data"]
+        assert plan["total"] == 5
+        assert plan["completed"] == 0
+        assert plan["remaining_minutes"] > 0
+        assert plan["next_task"]["title"] == "阅读个性化讲义"
+        updated_plan = client.patch(
+            f"/api/learning/tasks/{plan['tasks'][0]['id']}",
+            json={"completed": True},
+        ).json()["data"]
+        assert updated_plan["completed"] == 1
+        assert updated_plan["progress"] == 20
+
         pptx = client.get(f"/api/resources/{resource['id']}/pptx")
         assert pptx.status_code == 200
         assert pptx.content[:2] == b"PK"
@@ -156,7 +170,7 @@ def test_complete_python_learning_loop():
         progress = client.get("/api/learning/progress").json()["data"]
         assert progress["mastery"]
         verbs = {item["verb"] for item in progress["events"]}
-        assert {"created", "generated", "asked", "completed", "rated"}.issubset(verbs)
+        assert {"created", "generated", "asked", "completed", "rated", "progressed"}.issubset(verbs)
 
         updated = client.get("/api/profiles").json()["data"]
         assert len(updated["mistake_history"]) > len(profile["mistake_history"])
@@ -165,3 +179,4 @@ def test_complete_python_learning_loop():
         assert dashboard["latest_evaluation"]["score"] == report["score"]
         assert dashboard["mastery"]
         assert dashboard["resource_feedback"]["helpful"] >= 1
+        assert dashboard["active_plan"]["completed"] == 1

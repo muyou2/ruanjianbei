@@ -136,6 +136,8 @@ def save_resource(topic: str, profile_id: int | None, content: dict, review: dic
             (topic, profile_id, "ready", json_dump(content), json_dump(review), utc_now()),
         )
         resource_id = int(cursor.lastrowid)
+    if profile_id is not None:
+        create_learning_tasks(resource_id, profile_id, topic, content)
     record_learning_event(
         profile_id,
         "generated",
@@ -144,6 +146,148 @@ def save_resource(topic: str, profile_id: int | None, content: dict, review: dic
         {"topic": topic, "review_status": review.get("status")},
     )
     return resource_id
+
+
+def create_learning_tasks(
+    resource_id: int,
+    profile_id: int,
+    topic: str,
+    content: dict[str, Any],
+) -> list[dict[str, Any]]:
+    profile = content.get("profile_snapshot", {})
+    style = str(profile.get("learning_style", "循序渐进"))
+    weak_points = profile.get("weak_points", [])
+    focus = "、".join(weak_points[:3]) or topic
+    durations = {"lecture": 25, "mindmap": 10, "code": 35, "quiz": 20, "review": 10}
+    if "基础" in style or "循序渐进" in style:
+        durations["lecture"] += 10
+        durations["quiz"] += 5
+    elif "项目" in style or "实践" in style:
+        durations["code"] += 15
+    elif "考试" in style or "考点" in style:
+        durations["quiz"] += 10
+        durations["code"] = max(20, durations["code"] - 10)
+    tasks = [
+        ("lecture", "阅读个性化讲义", f"带着“{focus}”问题阅读讲义，并记录一个仍不理解的点。"),
+        ("mindmap", "查看思维导图", "用自己的话复述知识结构，确认各步骤之间的关系。"),
+        ("code", "完成代码实操", f"运行并修改“{topic}”代码案例，保留一次调试记录。"),
+        ("quiz", "完成针对性练习", "完成资源包中的选择、判断、简答和代码题。"),
+        ("review", "测评与错题复盘", "提交测评，查看薄弱点写回，并确定下一次复习目标。"),
+    ]
+    now = utc_now()
+    with connect() as conn:
+        conn.executemany(
+            """INSERT OR IGNORE INTO learning_tasks
+            (profile_id,resource_id,task_type,title,description,estimated_minutes,status,
+             order_index,created_at,completed_at)
+            VALUES(?,?,?,?,?,?, 'pending', ?, ?, NULL)""",
+            [
+                (
+                    profile_id,
+                    resource_id,
+                    task_type,
+                    title,
+                    description,
+                    durations[task_type],
+                    index,
+                    now,
+                )
+                for index, (task_type, title, description) in enumerate(tasks, 1)
+            ],
+        )
+    return list_learning_tasks(profile_id, resource_id)
+
+
+def list_learning_tasks(
+    profile_id: int | None,
+    resource_id: int | None = None,
+) -> list[dict[str, Any]]:
+    if profile_id is None:
+        return []
+    if resource_id is None:
+        resources = list_resources(profile_id)
+        resource_id = resources[0]["id"] if resources else None
+    if resource_id is None:
+        return []
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT * FROM learning_tasks
+            WHERE profile_id=? AND resource_id=? ORDER BY order_index, id""",
+            (profile_id, resource_id),
+        ).fetchall()
+    if not rows:
+        resource = get_resource(resource_id)
+        if resource and resource.get("profile_id") == profile_id:
+            return create_learning_tasks(
+                resource_id,
+                profile_id,
+                resource["topic"],
+                resource["content"],
+            )
+    return [dict(row) for row in rows]
+
+
+def learning_task_summary(
+    profile_id: int | None,
+    resource_id: int | None = None,
+) -> dict[str, Any] | None:
+    tasks = list_learning_tasks(profile_id, resource_id)
+    if not tasks:
+        return None
+    resource_id = int(tasks[0]["resource_id"])
+    resource = get_resource(resource_id)
+    completed = sum(item["status"] == "completed" for item in tasks)
+    total_minutes = sum(int(item["estimated_minutes"]) for item in tasks)
+    remaining_minutes = sum(
+        int(item["estimated_minutes"]) for item in tasks if item["status"] != "completed"
+    )
+    return {
+        "resource_id": resource_id,
+        "topic": resource["topic"] if resource else "",
+        "tasks": tasks,
+        "completed": completed,
+        "total": len(tasks),
+        "progress": round(completed / len(tasks) * 100),
+        "total_minutes": total_minutes,
+        "remaining_minutes": remaining_minutes,
+        "next_task": next(
+            (item for item in tasks if item["status"] != "completed"),
+            None,
+        ),
+    }
+
+
+def update_learning_task(
+    task_id: int,
+    profile_id: int,
+    completed: bool,
+) -> dict[str, Any] | None:
+    status = "completed" if completed else "pending"
+    completed_at = utc_now() if completed else None
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM learning_tasks WHERE id=? AND profile_id=?",
+            (task_id, profile_id),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE learning_tasks SET status=?, completed_at=? WHERE id=?",
+            (status, completed_at, task_id),
+        )
+        resource_id = int(row["resource_id"])
+    record_learning_event(
+        profile_id,
+        "progressed",
+        "learning_task",
+        str(task_id),
+        {
+            "resource_id": resource_id,
+            "title": row["title"],
+            "status": status,
+        },
+    )
+    return learning_task_summary(profile_id, resource_id)
 
 
 def list_resources(profile_id: int | None = None) -> list[dict[str, Any]]:

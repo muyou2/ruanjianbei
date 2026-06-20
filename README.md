@@ -37,6 +37,7 @@
 | 简答题、代码题 | MVP 实现 | 关键词/关键语句检查，不执行代码 |
 | 掌握度、推荐 | MVP 实现 | 基于逐题得分、轨迹与资源反馈 |
 | 画像更新与 Dashboard | 已实现 | 薄弱点、掌握度和学习事件真实写回 |
+| 可执行学习计划 | 已实现 | 资源生成后形成五步任务，可勾选、恢复并统计剩余时间 |
 | 视频、语音、Docker 沙箱 | 待扩展 | 当前不宣传为已完成 |
 | 教师端、登录、DKT/BKT、复杂 checkpoint | 待扩展 | 不属于初赛版本 |
 
@@ -138,10 +139,11 @@ EMBEDDING_DEVICE=cpu
 3. 检索 `dropna 和 fillna 如何选择`，展示 top-k、来源和模式。
 4. 生成“Pandas 数据清洗与分析综合实践”资源包。
 5. 展示七阶段时间线、七类资源和生成来源。
-6. 下载 PPTX，预览动态流程图。
-7. Tutor Chat 提问并展开引用。
-8. 完成测评，展示逐题得分与画像写回。
-9. 返回 Dashboard 展示掌握度和学习轨迹变化。
+6. 勾选“阅读讲义/查看导图/代码实操”等学习任务，展示进度持久化。
+7. 下载 PPTX，预览动态流程图。
+8. Tutor Chat 提问并展开引用。
+9. 完成测评，展示逐题得分与画像写回。
+10. 返回 Dashboard 展示学习计划、掌握度和学习轨迹变化。
 
 ## 内置课程与不足
 
@@ -149,4 +151,4 @@ EMBEDDING_DEVICE=cpu
 
 当前不足：真实模型质量依赖外部服务；首次下载 BGE 需要网络；简答、代码题、掌握度仍为 MVP；HTML 动画不等于真实视频；教师审核端、账号体系、安全代码沙箱和复杂知识追踪尚未实现。
 
-更多资料：[赛题追踪](docs/REQUIREMENT_TRACEABILITY.md) · [演示脚本](docs/DEMO_SCRIPT.md) · [讯飞配置](docs/XFYUN_SETUP.md) · [当前不足](docs/LIMITATIONS.md) · [AI Coding 说明](docs/AI_CODING_DISCLOSURE.md)
+更多资料：[实用性设计](docs/PRACTICALITY.md) · [赛题追踪](docs/REQUIREMENT_TRACEABILITY.md) · [演示脚本](docs/DEMO_SCRIPT.md) · [讯飞配置](docs/XFYUN_SETUP.md) · [当前不足](docs/LIMITATIONS.md) · [AI Coding 说明](docs/AI_CODING_DISCLOSURE.md)

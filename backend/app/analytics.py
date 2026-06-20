@@ -11,6 +11,7 @@ from .repositories import (
     feedback_summary,
     get_profile,
     latest_evaluation,
+    learning_task_summary,
     list_learning_events,
     list_mastery,
 )
@@ -80,6 +81,7 @@ def local_learning_signals() -> dict[str, Any]:
     mastery = list_mastery(profile_id)
     events = list_learning_events(profile_id, 8)
     feedback = feedback_summary(profile_id)
+    active_plan = learning_task_summary(profile_id)
     latest_score = float(evaluation["score"]) if evaluation else None
     evaluated_weak = evaluation["weak_points"] if evaluation else []
     weak_points = list(dict.fromkeys((profile or {}).get("weak_points", []) + evaluated_weak))
@@ -112,6 +114,11 @@ def local_learning_signals() -> dict[str, Any]:
         recommendation = "当前掌握情况良好，建议进入项目迁移任务，并用自己的数据替换示例数据。"
     if feedback["needs_adjustment"] > feedback["helpful"]:
         recommendation += " 最近“需要调整”的资源反馈较多，下一轮应更换讲解形式或缩小单次学习任务。"
+    if active_plan and active_plan["next_task"]:
+        recommendation = (
+            f"下一步：{active_plan['next_task']['title']}（约 "
+            f"{active_plan['next_task']['estimated_minutes']} 分钟）。{recommendation}"
+        )
     return {
         "profile_id": profile_id,
         "profile_name": (profile or {}).get("display_name"),
@@ -122,6 +129,7 @@ def local_learning_signals() -> dict[str, Any]:
         "mastery_average": round(mean([float(item["mastery"]) for item in mastery]), 1) if mastery else None,
         "recent_events": events,
         "resource_feedback": feedback,
+        "active_plan": active_plan,
         "recommendation": recommendation,
         "principle": "近期学习行为 > 历史测评 > 静态画像",
     }

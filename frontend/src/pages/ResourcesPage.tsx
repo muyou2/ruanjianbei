@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Bot, CheckCircle2, Circle, Download, GitBranch, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react'
+import { Bot, CheckCircle2, Circle, Clock3, Download, GitBranch, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api, consumeSSE } from '../api'
 import { Button, Card, EmptyState, Markdown, Mermaid, PageHeader } from '../components'
-import type { Citation, GenerationMeta, Profile, Resource } from '../types'
+import type { Citation, GenerationMeta, LearningPlan, Profile, Resource } from '../types'
 
 const tabs = [
   ['learning_path', '学习路径'], ['lecture', '课程讲义'], ['mindmap', '思维导图'],
@@ -49,14 +49,17 @@ export default function ResourcesPage() {
   const [feedback, setFeedback] = useState<number | null>(null)
   const [generation, setGeneration] = useState<Record<string, GenerationMeta>>({})
   const [error, setError] = useState('')
+  const [plan, setPlan] = useState<LearningPlan | null>(null)
 
   const load = async () => {
-    const [current, packs] = await Promise.all([
+    const [current, packs, activePlan] = await Promise.all([
       api<Profile | null>('/api/profiles'),
       api<Resource[]>('/api/resources'),
+      api<LearningPlan | null>('/api/learning/tasks'),
     ])
     setProfile(current)
     setHistory(packs)
+    setPlan(activePlan)
   }
   useEffect(() => { load().catch(() => null) }, [])
 
@@ -80,6 +83,7 @@ export default function ResourcesPage() {
           setResourceId(data.resource_id)
           setFeedback(null)
           setProgress(100); setStage(data.message); setWorkflow(data.workflow || [])
+          api<LearningPlan>(`/api/learning/tasks?resource_id=${data.resource_id}`).then(setPlan).catch(() => null)
           load()
         }
       })
@@ -101,6 +105,7 @@ export default function ResourcesPage() {
     setFeedback(null)
     setProgress(100)
     setStage('已加载历史资源包')
+    api<LearningPlan>(`/api/learning/tasks?resource_id=${item.id}`).then(setPlan).catch(() => null)
   }
 
   const content = resources[active]
@@ -112,6 +117,13 @@ export default function ResourcesPage() {
       body: JSON.stringify({ rating }),
     })
     setFeedback(rating)
+  }
+  const toggleTask = async (taskId: number, completed: boolean) => {
+    const updated = await api<LearningPlan>(`/api/learning/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ completed }),
+    })
+    setPlan(updated)
   }
   return (
     <>
@@ -156,6 +168,15 @@ export default function ResourcesPage() {
           {resourceId && active === 'ppt_outline' && <a href={`http://localhost:8000/api/resources/${resourceId}/pptx`} className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white"><Download className="h-4 w-4" />下载个性化 PPT 文件</a>}
         </Card>
         <div className="space-y-6">
+          {plan && <Card>
+            <div className="flex items-center gap-2"><Clock3 className="text-violet-600" /><h3 className="font-black">可执行学习计划</h3></div>
+            <div className="mt-1 text-[11px] text-slate-500">{plan.topic}</div>
+            <div className="mt-3 flex items-center justify-between text-xs"><span>{plan.completed}/{plan.total} 已完成</span><span className="font-bold text-violet-700">{plan.progress}% · 剩余约 {plan.remaining_minutes} 分钟</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${plan.progress}%` }} /></div>
+            <div className="mt-4 space-y-2">{plan.tasks.map(task => <button key={task.id} onClick={() => toggleTask(task.id, task.status !== 'completed')} className={`w-full rounded-xl p-3 text-left ${task.status === 'completed' ? 'bg-emerald-50' : 'bg-slate-50 hover:bg-violet-50'}`}>
+              <div className="flex gap-2">{task.status === 'completed' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />}<div><div className="text-xs font-black">{task.title} · {task.estimated_minutes} 分钟</div><div className="mt-1 text-[11px] leading-5 text-slate-500">{task.description}</div></div></div>
+            </button>)}</div>
+          </Card>}
           {review && <Card>
             <div className="flex items-center gap-2"><ShieldCheck className={review.passed ? 'text-emerald-600' : 'text-amber-600'} /><h3 className="font-black">规则审校报告</h3></div>
             <div className="mt-4 flex items-end justify-between"><div className="text-4xl font-black">{review.score}<span className="text-sm text-slate-400"> / 100</span></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${review.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{review.status}</span></div>

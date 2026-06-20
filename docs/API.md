@@ -15,6 +15,8 @@
 | POST | `/api/resources/generate` | SSE 生成资源包 |
 | GET | `/api/resources` | 历史资源包 |
 | GET | `/api/resources/{id}/pptx` | 导出个性化 PPTX 文件 |
+| GET | `/api/learning/tasks?resource_id={id}` | 获取当前学生的可执行学习计划 |
+| PATCH | `/api/learning/tasks/{task_id}` | 完成或恢复一项学习任务 |
 | POST | `/api/resources/{id}/feedback` | 保存当前学生的资源使用反馈 |
 | POST | `/api/tutor/chat` | SSE RAG 答疑 |
 | GET | `/api/quizzes` | 获取题目 |

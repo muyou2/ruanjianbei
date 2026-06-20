@@ -45,3 +45,6 @@ profile_loaded
 - `learning_events`：采用轻量 actor（当前画像）—verb—object 结构记录真实学习行为，设计思想参考 xAPI，但不宣称完整兼容。
 - `mastery_records`：按知识点累计真实逐题得分、尝试次数和最近得分。
 - `resource_feedback`：记录资源包是否有帮助，为后续推荐策略提供学生反馈证据。
+- `learning_tasks`：把学习路径落成“讲义—导图—代码—练习—复盘”五步任务，保存完成时间与剩余学习时长。
+
+Resource Center 和 Dashboard 读取同一份任务状态，因此学生刷新页面或重新打开项目后可以继续学习，而不是重新从资源列表中寻找下一步。

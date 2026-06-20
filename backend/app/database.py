@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS resource_feedback (
   created_at TEXT NOT NULL,
   UNIQUE(profile_id, resource_id)
 );
+CREATE TABLE IF NOT EXISTS learning_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL, resource_id INTEGER NOT NULL,
+  task_type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
+  estimated_minutes INTEGER NOT NULL DEFAULT 10,
+  status TEXT NOT NULL DEFAULT 'pending', order_index INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, completed_at TEXT,
+  UNIQUE(resource_id, task_type)
+);
 """
 
 

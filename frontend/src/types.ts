@@ -52,3 +52,27 @@ export type GenerationMeta = {
   rag_enhanced?: boolean
   error?: string | null
 }
+
+export type LearningTask = {
+  id: number
+  resource_id: number
+  task_type: string
+  title: string
+  description: string
+  estimated_minutes: number
+  status: 'pending' | 'completed'
+  order_index: number
+  completed_at?: string | null
+}
+
+export type LearningPlan = {
+  resource_id: number
+  topic: string
+  tasks: LearningTask[]
+  completed: number
+  total: number
+  progress: number
+  total_minutes: number
+  remaining_minutes: number
+  next_task?: LearningTask | null
+}

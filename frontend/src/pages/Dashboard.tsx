@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Activity, ArrowRight, BookMarked, BrainCircuit, ChartNoAxesCombined, Cpu, Files } from 'lucide-react'
+import { Activity, ArrowRight, BookMarked, BrainCircuit, ChartNoAxesCombined, CheckCircle2, Circle, Clock3, Cpu, Files } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { Card, PageHeader } from '../components'
-import type { Profile, Resource } from '../types'
+import type { LearningPlan, Profile, Resource } from '../types'
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [config, setConfig] = useState<any>(null)
   const [testingModel, setTestingModel] = useState(false)
   const [modelError, setModelError] = useState('')
+  const [plan, setPlan] = useState<LearningPlan | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -26,6 +27,7 @@ export default function Dashboard() {
       setDocuments(docs)
       setResources(packs)
       setSignals(analytics.personal_signals)
+      setPlan(analytics.personal_signals?.active_plan || null)
       setConfig(configStatus)
     }).catch(() => null)
   }, [])
@@ -42,6 +44,15 @@ export default function Dashboard() {
     }
   }
 
+  const toggleTask = async (taskId: number, completed: boolean) => {
+    const updated = await api<LearningPlan>(`/api/learning/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ completed }),
+    })
+    setPlan(updated)
+    setSignals((previous: any) => ({ ...previous, active_plan: updated }))
+  }
+
   const latestScore = signals?.latest_evaluation?.score
   const mastery = signals?.mastery || []
   const eventLabel: Record<string, string> = {
@@ -50,6 +61,7 @@ export default function Dashboard() {
     asked: '向智能助教提问',
     completed: '完成学习评估',
     rated: '评价学习资源',
+    progressed: '推进学习任务',
   }
   const stats = [
     { label: '当前画像', value: profile ? '8 维' : '未创建', icon: BrainCircuit, color: 'from-violet-500 to-fuchsia-500' },
@@ -90,6 +102,23 @@ export default function Dashboard() {
           <div className="mt-4 text-2xl font-black">{value}</div><div className="text-sm text-slate-500">{label}</div>
         </Card>)}
       </div>
+      <Card className="mt-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2"><Clock3 className="h-5 w-5 text-violet-600" /><h3 className="font-black">当前可执行学习计划</h3></div>
+            <p className="mt-1 text-xs text-slate-500">{plan ? `${plan.topic} · 剩余约 ${plan.remaining_minutes} 分钟` : '生成资源包后，系统会把学习路径转成可执行任务。'}</p>
+          </div>
+          {plan && <div className="min-w-44">
+            <div className="mb-1 flex justify-between text-xs font-bold"><span>{plan.completed}/{plan.total} 已完成</span><span>{plan.progress}%</span></div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${plan.progress}%` }} /></div>
+          </div>}
+        </div>
+        {plan ? <div className="mt-4 grid gap-2 md:grid-cols-5">
+          {plan.tasks.map(task => <button key={task.id} onClick={() => toggleTask(task.id, task.status !== 'completed')} className={`rounded-2xl border p-3 text-left transition ${task.status === 'completed' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-slate-50 hover:border-violet-200'}`}>
+            <div className="flex items-start gap-2">{task.status === 'completed' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />}<div><div className="text-xs font-black">{task.title}</div><div className="mt-1 text-[11px] text-slate-500">约 {task.estimated_minutes} 分钟</div></div></div>
+          </button>)}
+        </div> : <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">暂无计划。先到资源中心生成一个学习主题。</div>}
+      </Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
         <Card>
           <div className="flex items-center justify-between"><h3 className="font-black">当前画像与动态薄弱点</h3><Link to="/profile" className="text-xs font-bold text-violet-600">切换或查看画像</Link></div>

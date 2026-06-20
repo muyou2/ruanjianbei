@@ -59,6 +59,10 @@ class ResourceFeedbackRequest(BaseModel):
     comment: str = Field(default="", max_length=500)
 
 
+class LearningTaskUpdateRequest(BaseModel):
+    completed: bool
+
+
 class TutorRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     mode: Literal["socratic", "explain"] = "socratic"

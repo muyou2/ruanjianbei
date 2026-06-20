@@ -28,17 +28,20 @@ from .repositories import (
     list_profiles,
     list_resources,
     list_learning_events,
+    learning_task_summary,
     list_mastery,
     record_learning_event,
     save_evaluation,
     save_message,
     save_profile,
     save_resource_feedback,
+    update_learning_task,
     update_mastery,
 )
 from .schemas import (
     EvaluationSubmitRequest,
     KnowledgeSearchRequest,
+    LearningTaskUpdateRequest,
     ProfileGenerateRequest,
     ProfileSelectRequest,
     ResourceFeedbackRequest,
@@ -301,8 +304,34 @@ def learning_progress():
             "profile_id": profile_id,
             "mastery": list_mastery(profile_id),
             "events": list_learning_events(profile_id, 20),
+            "active_plan": learning_task_summary(profile_id),
         }
     )
+
+
+@app.get("/api/learning/tasks")
+def learning_tasks(resource_id: int | None = None):
+    profile = get_profile()
+    if not profile:
+        return response(None)
+    if resource_id is not None:
+        resource = get_resource(resource_id)
+        if not resource:
+            raise HTTPException(404, "资源包不存在")
+        if resource.get("profile_id") != profile.get("id"):
+            raise HTTPException(403, "只能查看当前学生自己的学习任务")
+    return response(learning_task_summary(profile["id"], resource_id))
+
+
+@app.patch("/api/learning/tasks/{task_id}")
+def learning_task_update(task_id: int, payload: LearningTaskUpdateRequest):
+    profile = get_profile()
+    if not profile:
+        raise HTTPException(404, "当前学生画像不存在")
+    result = update_learning_task(task_id, profile["id"], payload.completed)
+    if not result:
+        raise HTTPException(404, "学习任务不存在")
+    return response(result, "学习进度已保存")
 
 
 @app.get("/api/quizzes")
