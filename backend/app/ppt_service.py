@@ -9,6 +9,10 @@ def _clean(text: str) -> str:
     return re.sub(r"[`*_>#]", "", text).strip()
 
 
+def _clean_code(text: str) -> str:
+    return re.sub(r"[`*>#]", "", text).strip()
+
+
 def _bullets(markdown: str, limit: int = 5) -> list[str]:
     items = []
     for line in markdown.splitlines():
@@ -94,7 +98,7 @@ def build_pptx(resource: dict[str, Any]) -> Path:
     )
     add_content("知识点讲解", _bullets(lecture, 6), "内容需结合知识库引用核验")
     code_lines = [
-        _clean(line)
+        _clean_code(line)
         for line in code.splitlines()
         if line.strip() and not line.strip().startswith(("#", "```"))
     ][:8]

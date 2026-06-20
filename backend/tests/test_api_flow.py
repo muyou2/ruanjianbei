@@ -22,6 +22,15 @@ def parse_sse(text: str) -> list[tuple[str, dict]]:
 
 def test_complete_python_learning_loop():
     with TestClient(app) as client:
+        status = client.get("/api/config/status").json()["data"]
+        assert len(status["course_topics"]) == 17
+        llm_test = client.get("/api/config/llm-test")
+        assert llm_test.status_code == 200
+        llm_report = llm_test.json()["data"]
+        assert llm_report["provider"] == "mock"
+        assert llm_report["success"] is True
+        assert llm_report["fallback_used"] is False
+
         generated = client.post(
             "/api/profiles",
             json={
@@ -36,10 +45,10 @@ def test_complete_python_learning_loop():
 
         search = client.post(
             "/api/knowledge/search",
-            json={"query": "Pandas 缺失值和数据清洗", "top_k": 4},
+            json={"query": "Pandas dropna 和 fillna 应该怎么选择？", "top_k": 4},
         )
         assert search.status_code == 200
-        assert search.json()["data"]
+        assert len(search.json()["data"]) >= 3
         assert search.json()["data"][0]["retrieval_mode"] in {
             "语义向量检索",
             "Hashing MVP 检索",
@@ -82,6 +91,8 @@ def test_complete_python_learning_loop():
             assert resource["content"][key]
         assert resource["content"]["generation_metadata"]
         assert resource["content"]["multimodal_resource"]["type"] == "html_animation"
+        assert len(resource["content"]["workflow"]) == 7
+        assert resource["content"]["workflow"][-1]["state"] == "saved"
         for agent in [
             "ProfileAgent",
             "KnowledgeAgent",
@@ -97,17 +108,24 @@ def test_complete_python_learning_loop():
         pptx = client.get(f"/api/resources/{resource['id']}/pptx")
         assert pptx.status_code == 200
         assert pptx.content[:2] == b"PK"
+        assert client.get("/api/resources/999999/pptx").status_code == 404
 
         tutor = client.post(
             "/api/tutor/chat",
             json={
-                "question": "Pandas 处理缺失值时为什么不能总是删除整行？",
+                "question": "Pandas 里 dropna 和 fillna 应该怎么选择？",
                 "mode": "socratic",
             },
         )
         tutor_events = parse_sse(tutor.text)
         assert any(event == "citations" and data for event, data in tutor_events)
         assert any(event == "evidence" for event, _ in tutor_events)
+        assert any(event == "generation" for event, _ in tutor_events)
+        tutor_answer = "".join(
+            data["text"] for event, data in tutor_events if event == "delta"
+        )
+        assert "dropna" in tutor_answer
+        assert "fillna" in tutor_answer
 
         quiz = resource["content"]["quiz"]
         answers = [

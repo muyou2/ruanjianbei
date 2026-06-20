@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     embedding_provider: str = "auto"
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
     embedding_device: str = "cpu"
+    runtime_dir: Path = RUNTIME_DIR
 
     model_config = SettingsConfigDict(
         env_file=(BASE_DIR / ".env", PROJECT_DIR / ".env"),
@@ -44,25 +45,25 @@ class Settings(BaseSettings):
 
     @property
     def database_path(self) -> Path:
-        return RUNTIME_DIR / "zhixue.db"
+        return self.runtime_dir / "zhixue.db"
 
     @property
     def uploads_dir(self) -> Path:
-        return RUNTIME_DIR / "uploads"
+        return self.runtime_dir / "uploads"
 
     @property
     def chroma_dir(self) -> Path:
-        return RUNTIME_DIR / "chroma"
+        return self.runtime_dir / "chroma"
 
     @property
     def exports_dir(self) -> Path:
-        return RUNTIME_DIR / "exports"
+        return self.runtime_dir / "exports"
 
 
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    settings.runtime_dir.mkdir(parents=True, exist_ok=True)
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
     settings.chroma_dir.mkdir(parents=True, exist_ok=True)
     settings.exports_dir.mkdir(parents=True, exist_ok=True)

@@ -23,7 +23,7 @@
 2. [MAIC 论文](https://arxiv.org/abs/2409.03512)：强调多智能体课堂在规模化与适应性之间的平衡，以及用真实学习记录分析学习过程。
 3. [LangGraph Persistence](https://docs.langchain.com/oss/python/langgraph/persistence)：借鉴 thread/checkpoint 的状态持久化与可观测性思想；当前项目使用轻量状态对象和 SQLite，未宣传为真实 LangGraph。
 4. [xAPI Specification](https://github.com/adlnet/xAPI-Spec)：参考学习活动与学习体验的事件化表达，新增轻量 actor—verb—object 学习记录；当前并非完整 xAPI 实现。
-5. [Sentence Transformers Semantic Search](https://sbert.net/examples/sentence_transformer/applications/semantic-search/README.html)：作为下一步中文语义检索与 retrieve-and-rerank 升级依据；当前仍明确标注为 Hashing MVP。
+5. [Sentence Transformers Semantic Search](https://sbert.net/examples/sentence_transformer/applications/semantic-search/README.html)：当前用于中文语义检索；模型不可用时自动降级为 Hashing MVP，后续可扩展 retrieve-and-rerank。
 
 据此，本轮没有增加装饰性资源类型，而是补充知识点掌握度、学习事件、资源反馈、课程先修关系和赛题要求追踪矩阵，让“动态调整”有真实数据库证据。
 

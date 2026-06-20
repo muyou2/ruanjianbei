@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | GET | `/api/health` | 服务健康检查 |
 | GET | `/api/config/status` | 模型与向量后端状态 |
+| GET | `/api/config/llm-test` | 测试当前模型并返回成功、回退和错误信息 |
 | GET | `/api/analytics/overview` | 个人学习信号与开放数据基准 |
 | GET/POST/PUT | `/api/profiles` | 查询、生成、更新画像 |
 | GET | `/api/profiles/all` | 查询全部演示/自定义画像 |

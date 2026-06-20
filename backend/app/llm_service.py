@@ -31,7 +31,9 @@ class GenerationResult:
         data.pop("content")
         data["rag_enhanced"] = rag
         data["label"] = (
-            "知识库检索增强生成"
+            "真实模型失败后回退 Mock"
+            if self.fallback_used
+            else "知识库检索增强生成"
             if rag and self.used_real_model
             else "真实大模型生成"
             if self.used_real_model
@@ -45,7 +47,10 @@ class LLMService:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
+        self.requested_provider = self.settings.llm_provider.lower().strip() or "mock"
         self.provider = self._resolve_provider()
+        self.configuration_error = self._configuration_error()
+        self.last_test_result: dict[str, Any] | None = None
 
     def _resolve_provider(self) -> ProviderConfig | None:
         requested = self.settings.llm_provider.lower().strip()
@@ -80,17 +85,39 @@ class LLMService:
         item = candidates.get(requested)
         return item if item and item.api_key and item.base_url and item.model else None
 
+    def _configuration_error(self) -> str | None:
+        if self.requested_provider == "mock":
+            return None
+        if self.requested_provider not in {
+            "xfyun",
+            "openai_compatible",
+            "deepseek",
+            "qwen",
+        }:
+            return f"不支持的 LLM_PROVIDER：{self.requested_provider}"
+        if self.provider is None:
+            return f"{self.requested_provider} 配置不完整，请检查 API Key、Base URL 和模型名"
+        return None
+
     @property
     def is_mock(self) -> bool:
         return self.provider is None
 
     @property
     def provider_name(self) -> str:
-        return self.provider.name if self.provider else "mock"
+        return self.provider.name if self.provider else self.requested_provider
 
     @property
     def model_name(self) -> str:
-        return self.provider.model if self.provider else "mock-rules"
+        if self.provider:
+            return self.provider.model
+        configured = {
+            "xfyun": self.settings.xfyun_model,
+            "openai_compatible": self.settings.openai_compatible_model,
+            "deepseek": self.settings.deepseek_model,
+            "qwen": self.settings.qwen_model,
+        }
+        return configured.get(self.requested_provider) or "mock-rules"
 
     async def generate_result(
         self,
@@ -99,8 +126,15 @@ class LLMService:
         fallback: str,
     ) -> GenerationResult:
         if not self.provider:
+            fallback_used = self.requested_provider != "mock"
             return GenerationResult(
-                fallback, "mock", "mock-rules", "mock", False, False
+                fallback,
+                self.provider_name,
+                self.model_name,
+                "mock_fallback" if fallback_used else "mock",
+                False,
+                fallback_used,
+                self.configuration_error,
             )
         url = self.provider.base_url.rstrip("/") + "/chat/completions"
         payload = {
@@ -140,6 +174,26 @@ class LLMService:
                 True,
                 f"{type(error).__name__}: {str(error)[:180]}",
             )
+
+    async def test_connection(self) -> dict[str, Any]:
+        result = await self.generate_result(
+            "你是模型连通性测试助手。只需简短确认服务可用。",
+            "请回复：智学方舟模型连接正常。",
+            "Mock 模式可用；当前未获得真实模型响应。",
+        )
+        is_mock_request = self.requested_provider == "mock"
+        test = {
+            "provider": self.provider_name,
+            "model": self.model_name,
+            "success": is_mock_request or result.used_real_model,
+            "response_preview": result.content[:120],
+            "fallback_used": result.fallback_used,
+            "error_message": result.error,
+            "mock_mode": self.is_mock,
+            "tested_real_model": result.used_real_model,
+        }
+        self.last_test_result = test
+        return test
 
     async def generate(self, system: str, prompt: str, fallback: str) -> str:
         return (await self.generate_result(system, prompt, fallback)).content

@@ -18,3 +18,5 @@
 | UCI Student Performance | https://archive.ics.uci.edu/dataset/320/student+performance | CC BY 4.0 | 学习分析公开基准 |
 
 再分发时应保留各项目原始许可证与版权声明。
+
+本项目不将第三方模型或框架能力表述为团队自研；运行时模型服务的使用还需遵守对应平台的服务条款。

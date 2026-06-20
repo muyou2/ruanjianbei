@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, ArrowRight, BookMarked, BrainCircuit, ChartNoAxesCombined, Files } from 'lucide-react'
+import { Activity, ArrowRight, BookMarked, BrainCircuit, ChartNoAxesCombined, Cpu, Files } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { Card, PageHeader } from '../components'
@@ -10,6 +10,9 @@ export default function Dashboard() {
   const [documents, setDocuments] = useState<any[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [signals, setSignals] = useState<any>(null)
+  const [config, setConfig] = useState<any>(null)
+  const [testingModel, setTestingModel] = useState(false)
+  const [modelError, setModelError] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -17,13 +20,27 @@ export default function Dashboard() {
       api<any[]>('/api/documents'),
       api<Resource[]>('/api/resources'),
       api<any>('/api/analytics/overview'),
-    ]).then(([current, docs, packs, analytics]) => {
+      api<any>('/api/config/status'),
+    ]).then(([current, docs, packs, analytics, configStatus]) => {
       setProfile(current)
       setDocuments(docs)
       setResources(packs)
       setSignals(analytics.personal_signals)
+      setConfig(configStatus)
     }).catch(() => null)
   }, [])
+
+  const testModel = async () => {
+    setTestingModel(true); setModelError('')
+    try {
+      const result = await api<any>('/api/config/llm-test')
+      setConfig((previous: any) => ({ ...previous, last_llm_test: result }))
+    } catch (error) {
+      setModelError(error instanceof Error ? error.message : '模型测试失败')
+    } finally {
+      setTestingModel(false)
+    }
+  }
 
   const latestScore = signals?.latest_evaluation?.score
   const mastery = signals?.mastery || []
@@ -43,10 +60,19 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader eyebrow="Dashboard" title="当前学生的真实学习闭环" description="这里只展示当前画像、该生资源历史、真实测评、错题和薄弱点。切换学生后，Dashboard 会同步变化。" />
+      <PageHeader eyebrow="Dashboard" title="当前学生的真实学习闭环" description="面向高校 Python 课程的个性化 AI 学习智能体平台。这里只展示当前学生真实产生的画像、资源、测评和学习轨迹。" />
       <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
-        {['画像构建', '知识检索', '资源生成', '智能辅导', '学习评估', '动态调整'].map((item, index) => <div key={item} className="flex shrink-0 items-center gap-2"><span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700">{index + 1}. {item}</span>{index < 5 && <span className="text-violet-300">→</span>}</div>)}
+        {['了解学生', '检索知识', '生成资源', '智能辅导', '学习评估', '动态调整'].map((item, index) => <div key={item} className="flex shrink-0 items-center gap-2"><span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700">{index + 1}. {item}</span>{index < 5 && <span className="text-violet-300">→</span>}</div>)}
       </div>
+      <Card className="mb-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3"><Cpu className="mt-1 text-violet-600" /><div><h3 className="font-black">模型与检索验收状态</h3><div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded-full bg-slate-100 px-3 py-1">Provider：{config?.provider || '加载中'}</span><span className="rounded-full bg-slate-100 px-3 py-1">模型：{config?.model || '加载中'}</span><span className={`rounded-full px-3 py-1 ${config?.mock_mode ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{config?.configuration_error ? '配置异常，调用时回退 Mock' : config?.mock_mode ? '当前为 Mock 模式' : '真实模型已配置'}</span><span className="rounded-full bg-violet-50 px-3 py-1 text-violet-700">{config?.retrieval?.mode || '检索加载中'}</span></div></div></div>
+          <button disabled={testingModel} onClick={testModel} className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{testingModel ? '正在测试模型…' : '测试当前模型连接'}</button>
+        </div>
+        {config?.configuration_error && <div className="mt-3 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{config.configuration_error}</div>}
+        {modelError && <div className="mt-3 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{modelError}</div>}
+        {config?.last_llm_test && <div className={`mt-3 rounded-xl p-3 text-xs ${config.last_llm_test.success && !config.last_llm_test.fallback_used ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}><b>最近测试：</b>{config.last_llm_test.success ? '请求完成' : '真实模型未通过'} · fallback={String(config.last_llm_test.fallback_used)} · {config.last_llm_test.response_preview}{config.last_llm_test.error_message ? ` · ${config.last_llm_test.error_message}` : ''}</div>}
+      </Card>
       <Card className="relative overflow-hidden !bg-slate-950 text-white">
         <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-500/30 blur-3xl" />
         <div className="relative max-w-3xl py-4 lg:py-8">

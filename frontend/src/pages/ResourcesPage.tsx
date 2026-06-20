@@ -21,6 +21,16 @@ const defaultAttribution: Record<string, string> = {
   multimodal_resource: 'ResourceAgent',
 }
 
+const stageNames: Record<string, string> = {
+  profile_loaded: '画像加载',
+  knowledge_retrieved: '知识检索',
+  plan_generated: '路径规划',
+  resources_generated: '资源生成',
+  quiz_generated: '测评生成',
+  review_completed: '内容审校',
+  saved: '保存完成',
+}
+
 export default function ResourcesPage() {
   const [topic, setTopic] = useState('Pandas 数据清洗与分析综合实践')
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -120,7 +130,7 @@ export default function ResourcesPage() {
           <div className="mb-2 flex justify-between text-xs"><span className="font-bold text-violet-700">{agent || 'Orchestrator'} · {stage}</span><span>{progress}%</span></div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} /></div>
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-            {workflow.map(item => <div key={item.state} className="flex shrink-0 items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700"><CheckCircle2 className="h-3.5 w-3.5" />{item.state}</div>)}
+            {workflow.map((item, index) => <div key={item.state} className="min-w-32 shrink-0 rounded-2xl border border-violet-200 bg-violet-50 p-3 text-xs text-violet-700"><div className="flex items-center gap-2 font-black"><CheckCircle2 className="h-3.5 w-3.5" />{index + 1}. {stageNames[item.state] || item.state}</div><div className="mt-1 line-clamp-2 text-[10px] text-violet-500">{item.agent}</div></div>)}
             {workflow.length < 7 && <div className="flex shrink-0 items-center gap-2 rounded-full border border-slate-100 px-3 py-2 text-xs text-slate-400"><Circle className="h-3.5 w-3.5" />等待后续状态</div>}
           </div>
         </div>}
@@ -134,7 +144,7 @@ export default function ResourcesPage() {
             <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">智能体：{attribution[active]}</span>
             <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">{activeMeta.label || 'Mock 规则生成'}</span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activeMeta.rag_enhanced ? '已使用知识库证据' : '未使用知识库证据'}</span>
-            <span className={`rounded-full px-3 py-1 text-xs font-bold ${review?.checks?.human_review_required ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{review?.checks?.human_review_required ? '需要人工核验' : '规则审校通过'}</span>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ${!review ? 'bg-slate-100 text-slate-500' : review?.checks?.human_review_required ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{!review ? '等待审校' : review?.checks?.human_review_required ? '需要人工核验' : '规则审校通过'}</span>
           </div>
           <div className="mt-4">
             {!content ? <EmptyState title="等待真实生成流程" text="选择学生并启动后，资源会随 SSE 事件逐项出现。" />

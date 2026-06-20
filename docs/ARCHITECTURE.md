@@ -17,6 +17,7 @@ flowchart LR
   LLM --> S[讯飞星火]
   LLM --> O[OpenAI-compatible / DeepSeek / Qwen]
   LLM --> M[Mock Fallback]
+  API --> TEST[LLM Test / 状态验收]
 ```
 
 资源生成使用 LangGraph 风格状态对象，但 MVP 不强依赖 LangGraph。当前保存并展示以下真实状态：
@@ -36,6 +37,8 @@ profile_loaded
 长任务通过 SSE 返回 `progress`、`citations`、`resource`、`review` 和 `done` 事件，避免页面长时间白屏。
 
 当前优先使用 `sentence-transformers` 加载 `BAAI/bge-small-zh-v1.5`，模型或依赖不可用时自动切换 Hashing MVP 检索。两种模式均由前端和 `/api/config/status` 如实展示。
+
+模型调用统一经过 `LLMService`。`/api/config/llm-test` 使用同一调用链测试当前 Provider；真实调用失败会返回 `fallback_used=true` 和错误摘要，不会将 Mock 响应伪装为真实模型结果。
 
 学习分析层新增三类可审计数据：
 

@@ -10,6 +10,9 @@ from app.agents import (
 from app.analytics import public_dataset_overview
 from app.evaluation import score_question
 from app.knowledge import cosine, hashing_vector, split_text
+from app.config import Settings
+from app.llm_service import LLMService
+from app.ppt_service import _clean_code
 
 
 def test_profile_rule_is_driven_by_input():
@@ -96,3 +99,42 @@ def test_uci_is_only_an_extension_dataset():
     assert overview["available"] is True
     assert overview["records"] == 649
     assert any("并非中国高校" in item for item in overview["limitations"])
+
+
+def test_all_llm_provider_configurations_and_explicit_fallback():
+    cases = [
+        ("xfyun", "x", "https://spark.example/v1", "spark-model"),
+        ("openai_compatible", "x", "https://openai.example/v1", "compatible-model"),
+        ("deepseek", "x", "https://deepseek.example/v1", "deepseek-chat"),
+        ("qwen", "x", "https://qwen.example/v1", "qwen-plus"),
+    ]
+    for provider, key, base_url, model in cases:
+        values = {"llm_provider": provider}
+        if provider == "xfyun":
+            values.update(xfyun_api_key=key, xfyun_base_url=base_url, xfyun_model=model)
+        elif provider == "openai_compatible":
+            values.update(
+                openai_compatible_api_key=key,
+                openai_compatible_base_url=base_url,
+                openai_compatible_model=model,
+            )
+        elif provider == "deepseek":
+            values.update(deepseek_api_key=key, deepseek_base_url=base_url, deepseek_model=model)
+        else:
+            values.update(qwen_api_key=key, qwen_base_url=base_url, qwen_model=model)
+        service = LLMService(Settings(**values))
+        assert service.provider_name == provider
+        assert service.model_name == model
+        assert service.configuration_error is None
+
+    broken = LLMService(Settings(llm_provider="xfyun", xfyun_api_key=""))
+    result = asyncio.run(broken.generate_result("system", "prompt", "fallback"))
+    assert result.fallback_used is True
+    assert result.used_real_model is False
+    assert result.error
+    assert result.metadata()["label"] == "真实模型失败后回退 Mock"
+
+
+def test_ppt_code_cleaning_preserves_python_identifiers():
+    assert _clean_code("df = df.drop_duplicates()") == "df = df.drop_duplicates()"
+    assert _clean_code("def clean_student_data(path):") == "def clean_student_data(path):"

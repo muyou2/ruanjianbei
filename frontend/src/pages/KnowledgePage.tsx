@@ -51,6 +51,10 @@ export default function KnowledgePage() {
               </div>)}
             </div>
           </Card>
+          <Card>
+            <div className="flex items-center justify-between"><h3 className="font-black">内置课程主题</h3><span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">{status?.course_topics?.length || 0} 个</span></div>
+            <div className="mt-4 flex flex-wrap gap-2">{(status?.course_topics || []).map((topic: string, index: number) => <span key={topic} className="rounded-full bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{index + 1}. {topic}</span>)}</div>
+          </Card>
           {benchmark?.available && <Card>
             <div className="flex items-center justify-between"><div><div className="text-xs font-bold text-slate-400">扩展分析 Demo（非核心闭环）</div><h3 className="mt-1 font-black">{benchmark.name}</h3></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{benchmark.license}</span></div>
             <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.records}</div><div className="text-[10px] text-slate-400">记录</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.features}</div><div className="text-[10px] text-slate-400">特征</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="font-black">{benchmark.average_final_grade}</div><div className="text-[10px] text-slate-400">平均成绩/20</div></div></div>

@@ -10,6 +10,7 @@ export default function EvaluationPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     api<any>('/api/quizzes').then(data => {
@@ -22,7 +23,7 @@ export default function EvaluationPage() {
 
   const submit = async () => {
     if (!resourceId) return
-    setLoading(true)
+    setLoading(true); setError('')
     try {
       setResult(await api('/api/evaluations/submit', {
         method: 'POST',
@@ -31,6 +32,8 @@ export default function EvaluationPage() {
           answers: questions.map(question => ({ question_id: question.id, answer: answers[question.id] || '' })),
         }),
       }))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '测评提交失败')
     } finally {
       setLoading(false)
     }
@@ -44,6 +47,8 @@ export default function EvaluationPage() {
         <div className="space-y-4">
           {questions.map((question, index) => <Card key={question.id}>
             <div className="flex items-center justify-between"><span className="text-xs font-bold text-violet-600">第 {index + 1} 题 · {question.knowledge_point}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-500">{question.type} · 25 分</span></div>
+            {question.type === 'short_answer' && <div className="mt-2 text-xs font-bold text-amber-700">关键词覆盖度 MVP 评分</div>}
+            {question.type === 'code' && <div className="mt-2 text-xs font-bold text-amber-700">关键语句检查，未接入安全沙箱执行</div>}
             <h3 className="mt-3 font-bold leading-7">{question.question}</h3>
             {question.options.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2">{question.options.map(option => <label key={option} className={`cursor-pointer rounded-2xl border p-3 text-sm transition ${answers[question.id] === option ? 'border-violet-400 bg-violet-50 text-violet-800' : 'border-slate-100 bg-slate-50'}`}><input className="mr-2" type="radio" name={question.id} checked={answers[question.id] === option} onChange={() => setAnswers(previous => ({ ...previous, [question.id]: option }))} />{option}</label>)}</div>
               : <textarea value={answers[question.id] || ''} onChange={event => setAnswers(previous => ({ ...previous, [question.id]: event.target.value }))} className="mt-4 min-h-32 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-sm outline-none focus:border-violet-400" placeholder={question.type === 'code' ? '输入代码。系统只做关键语句检查，不会执行。' : '输入你的解释…'} />}
@@ -55,6 +60,7 @@ export default function EvaluationPage() {
             </div>}
           </Card>)}
           <Button loading={loading} onClick={submit} className="w-full">提交答案、保存评估并更新画像</Button>
+          {error && <div className="rounded-2xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
         </div>
         <div>
           {result ? <div className="sticky top-6 space-y-4">

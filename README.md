@@ -20,7 +20,7 @@
 
 无 API Key 时自动进入 Mock 模式；数据库、检索、PPT 导出、测评、画像写回和学习轨迹仍真实执行。
 
-## 功能状态
+## 功能真实性说明表
 
 | 功能 | 状态 | 实现边界 |
 | --- | --- | --- |
@@ -30,6 +30,7 @@
 | 八智能体流水线 | 已实现 | 七阶段 SSE、输出归因和资源包持久化 |
 | 统一真实模型调用 | 已实现 | xfyun、OpenAI-compatible、DeepSeek、Qwen；失败显式回退 |
 | 个性化资源与 RAG 答疑 | 已实现 | 显示智能体、生成来源、知识库证据和核验状态 |
+| 无 Key 时的文本生成 | Mock 演示 | 使用输入驱动规则与课程模板；页面明确标注 Mock |
 | PPTX 文件导出 | 已实现 | 生成六页个性化演示文稿 |
 | HTML 动态流程图 | MVP 实现 | Resource Center 直接预览 Pandas 清洗动画 |
 | 选择/判断题评分 | 已实现 | 精确匹配 |
@@ -38,6 +39,8 @@
 | 画像更新与 Dashboard | 已实现 | 薄弱点、掌握度和学习事件真实写回 |
 | 视频、语音、Docker 沙箱 | 待扩展 | 当前不宣传为已完成 |
 | 教师端、登录、DKT/BKT、复杂 checkpoint | 待扩展 | 不属于初赛版本 |
+
+“真实实现”表示代码、数据库或文件输出可现场验证；“MVP 实现”表示功能真实运行但算法较轻量；“Mock”只替代无 Key 时的大模型文本，不替代检索、编排、评分、PPTX 或画像写回。
 
 ## 技术架构
 
@@ -83,7 +86,29 @@ LLM_PROVIDER=deepseek
 LLM_PROVIDER=qwen
 ```
 
-真实调用失败时自动回退，并在前端标记“Mock 规则生成 / 真实模型失败后已回退”。
+真实调用失败时自动回退，并在前端标记“Mock 规则生成 / 真实模型失败后回退 Mock”。
+
+### 验证真实模型是否接入成功
+
+1. 配置 `backend/.env` 并重启。
+2. 打开 Dashboard，检查 Provider、模型名称和 Mock 状态。
+3. 点击“测试当前模型连接”，或访问：
+
+```text
+GET http://localhost:8000/api/config/llm-test
+```
+
+真实接入成功应满足：
+
+```json
+{
+  "success": true,
+  "fallback_used": false,
+  "tested_real_model": true
+}
+```
+
+若 `fallback_used=true`，说明系统已明确回退 Mock，应根据 `error_message` 检查密钥、地址或模型名。
 
 ## 语义检索
 
@@ -124,4 +149,4 @@ EMBEDDING_DEVICE=cpu
 
 当前不足：真实模型质量依赖外部服务；首次下载 BGE 需要网络；简答、代码题、掌握度仍为 MVP；HTML 动画不等于真实视频；教师审核端、账号体系、安全代码沙箱和复杂知识追踪尚未实现。
 
-更多资料：[赛题追踪](docs/REQUIREMENT_TRACEABILITY.md) · [演示脚本](docs/DEMO_SCRIPT.md) · [讯飞配置](docs/SPARK_INTEGRATION.md) · [AI Coding 说明](docs/AI_CODING_DISCLOSURE.md)
+更多资料：[赛题追踪](docs/REQUIREMENT_TRACEABILITY.md) · [演示脚本](docs/DEMO_SCRIPT.md) · [讯飞配置](docs/XFYUN_SETUP.md) · [当前不足](docs/LIMITATIONS.md) · [AI Coding 说明](docs/AI_CODING_DISCLOSURE.md)

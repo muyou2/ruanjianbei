@@ -181,17 +181,17 @@ class Orchestrator:
 
         state.resources["citations"] = state.citations
         state.resources["agent_outputs"] = state.agent_outputs
-        state.resources["workflow"] = state.state_history
         state.resources["profile_snapshot"] = profile
         state.resources["generation_metadata"] = generation_map | {
             "learning_path": getattr(self.planner, "last_generation", {}),
             "quiz": getattr(self.quiz, "last_generation", {}),
         }
-        resource_id = save_resource(topic, profile.get("id"), state.resources, state.review)
-        yield sse(
-            "progress",
-            self.transition(state, "saved", "Orchestrator", "资源包及全部智能体输出已保存", 100),
+        saved_transition = self.transition(
+            state, "saved", "Orchestrator", "资源包及全部智能体输出已保存", 100
         )
+        state.resources["workflow"] = state.state_history
+        resource_id = save_resource(topic, profile.get("id"), state.resources, state.review)
+        yield sse("progress", saved_transition)
         yield sse(
             "done",
             {

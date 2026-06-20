@@ -48,8 +48,10 @@ export default function App() {
         <div className="mt-auto rounded-3xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-center gap-2 text-xs font-bold"><span className={`h-2 w-2 rounded-full ${status ? 'bg-emerald-400' : 'bg-amber-400'}`} />系统状态</div>
           <div className="mt-3 text-xs leading-6 text-slate-400">
-            <div>模型：{status?.mock_mode ? 'Mock 演示模式' : status?.provider || '连接中'}</div>
-            <div>检索：{status?.vector_backend || '初始化中'}</div>
+            <div>Provider：{status?.provider || '连接中'}</div>
+            <div>模型：{status?.model || '加载中'}</div>
+            <div>模式：{status?.configuration_error ? '配置异常，调用时回退 Mock' : status?.mock_mode ? 'Mock 模式' : '真实模型'}</div>
+            <div>检索：{status?.retrieval?.mode || status?.vector_backend || '初始化中'}</div>
           </div>
         </div>
       </aside>

@@ -50,6 +50,14 @@ from .schemas import (
 
 settings = get_settings()
 
+COURSE_TOPICS = [
+    "Python 基础语法", "数据类型与容器", "条件语句与循环", "函数设计",
+    "异常处理与调试", "文件读写", "面向对象基础", "NumPy 数组计算",
+    "Pandas Series 和 DataFrame", "数据读取与保存", "缺失值处理",
+    "重复值处理", "数据筛选与排序", "分组聚合", "数据可视化基础",
+    "综合项目：学生成绩数据分析", "综合项目：电商订单数据分析",
+]
+
 
 def response(data=None, message: str = "ok") -> dict:
     return {"success": True, "data": data, "message": message}
@@ -122,12 +130,20 @@ def config_status():
             "provider": llm_service.provider_name,
             "model": llm_service.model_name,
             "mock_mode": llm_service.is_mock,
+            "configuration_error": llm_service.configuration_error,
+            "last_llm_test": llm_service.last_test_result,
             "vector_backend": knowledge_store.backend,
             "retrieval": knowledge_store.status(),
             "retrieval_status": knowledge_store.mode_label,
             "course": "Python 基础到数据分析项目实战",
+            "course_topics": COURSE_TOPICS,
         }
     )
+
+
+@app.get("/api/config/llm-test")
+async def config_llm_test():
+    return response(await llm_service.test_connection(), "模型连通性测试完成")
 
 
 @app.get("/api/analytics/overview")
@@ -305,7 +321,23 @@ async def tutor_chat(payload: TutorRequest):
     evidence_sufficient = bool(citations) and max(
         (item.get("score", 0) for item in citations), default=0
     ) >= 0.08
-    if payload.mode == "socratic":
+    normalized_question = payload.question.lower()
+    if "dropna" in normalized_question and "fillna" in normalized_question:
+        fallback = """## 怎么选择 `dropna` 和 `fillna`
+
+- 用 `dropna`：缺失行占比很小、删除后不会造成明显偏差，或关键字段缺失使该行无法继续分析。
+- 用 `fillna`：需要保留样本，且能说明填充值依据。数值列常用中位数，类别列可用众数或“未知”。
+- 不要只看 API：先统计缺失比例，再判断缺失机制和业务含义，处理后重新检查分布。
+
+```python
+missing_rate = df.isna().mean()
+df = df.dropna(subset=["student_id"])
+df["age"] = df["age"].fillna(df["age"].median())
+```
+
+建议对比处理前后的行数、缺失率和关键指标，并在分析报告中记录处理依据。启发式模式下，你还可以先回答：如果 `age` 缺失 5%，直接删行会不会改变样本结构？"""
+        system = "你是 Python 数据分析课程助教。仅依据检索资料，解释 dropna 与 fillna 的选择依据、风险和验证步骤，使用 Markdown。"
+    elif payload.mode == "socratic":
         fallback = f"""我们先不急着给最终结论。针对“{payload.question}”，请先想一想：
 
 1. 这个问题的**输入是什么、期望输出是什么**？
@@ -341,13 +373,25 @@ async def tutor_chat(payload: TutorRequest):
                 "message": (
                     "知识库证据充足"
                     if evidence_sufficient
-                    else "当前课程知识库证据不足，建议补充课程资料或人工核验。"
+                    else "当前知识库证据不足，建议补充课程资料或人工核验。"
                 ),
                 "retrieval_mode": knowledge_store.mode_label,
             },
         )
         if not evidence_sufficient:
-            answer = "## 当前课程知识库证据不足\n\n建议补充课程资料或人工核验。系统已停止生成确定性结论。"
+            yield sse(
+                "generation",
+                {
+                    "provider": llm_service.provider_name,
+                    "model": llm_service.model_name,
+                    "label": "未调用模型（知识库证据不足）",
+                    "used_real_model": False,
+                    "fallback_used": False,
+                    "rag_enhanced": False,
+                    "error": None,
+                },
+            )
+            answer = "## 当前知识库证据不足\n\n建议补充课程资料或人工核验。系统已停止生成确定性结论。"
             yield sse("delta", {"text": answer})
             save_message("assistant", answer, citations, profile_id=profile_id)
             yield sse("done", {"message": "证据不足，已停止扩展生成"})

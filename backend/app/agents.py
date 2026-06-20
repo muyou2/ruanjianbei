@@ -1,4 +1,5 @@
 import re
+from html import escape
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -233,7 +234,7 @@ def multimodal_html(topic: str, profile: dict[str, Any]) -> dict[str, Any]:
         ("可视化", "plot()"),
     ]
     cards = "".join(
-        f'<div class="step" style="animation-delay:{index * 0.35}s"><b>{index + 1}. {name}</b><code>{api}</code></div>'
+        f'<div class="step" style="animation-delay:{index * 0.35}s"><b>{index + 1}. {escape(name)}</b><code>{escape(api)}</code></div>'
         for index, (name, api) in enumerate(steps)
     )
     html = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
@@ -242,8 +243,8 @@ h2{{margin:0 0 6px}}p{{margin:0 0 18px;color:#64748b}}.flow{{display:grid;grid-t
 .step{{background:white;border:1px solid #ddd6fe;border-radius:16px;padding:16px;opacity:0;transform:translateY(12px);animation:show .5s forwards;box-shadow:0 8px 24px #7c3aed12}}
 code{{display:block;margin-top:8px;color:#6d28d9;background:#f5f3ff;padding:6px;border-radius:8px}}
 @keyframes show{{to{{opacity:1;transform:none}}}}@media(max-width:650px){{.flow{{grid-template-columns:1fr}}}}
-</style></head><body><h2>{topic} · 数据清洗流程图解</h2>
-<p>{profile.get('display_name')} · {strategy['label']}：{strategy['tone']}</p><div class="flow">{cards}</div></body></html>"""
+</style></head><body><h2>{escape(topic)} · 数据清洗流程图解</h2>
+<p>{escape(str(profile.get('display_name')))} · {escape(strategy['label'])}：{escape(strategy['tone'])}</p><div class="flow">{cards}</div></body></html>"""
     return {
         "type": "html_animation",
         "title": "Pandas 数据清洗六步动画",
