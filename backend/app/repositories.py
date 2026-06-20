@@ -264,6 +264,7 @@ def update_learning_task(
 ) -> dict[str, Any] | None:
     status = "completed" if completed else "pending"
     completed_at = utc_now() if completed else None
+    changed = False
     with connect() as conn:
         row = conn.execute(
             "SELECT * FROM learning_tasks WHERE id=? AND profile_id=?",
@@ -271,22 +272,39 @@ def update_learning_task(
         ).fetchone()
         if not row:
             return None
-        conn.execute(
-            "UPDATE learning_tasks SET status=?, completed_at=? WHERE id=?",
-            (status, completed_at, task_id),
-        )
         resource_id = int(row["resource_id"])
-    record_learning_event(
-        profile_id,
-        "progressed",
-        "learning_task",
-        str(task_id),
-        {
-            "resource_id": resource_id,
-            "title": row["title"],
-            "status": status,
-        },
-    )
+        if row["status"] != status:
+            conn.execute(
+                "UPDATE learning_tasks SET status=?, completed_at=? WHERE id=?",
+                (status, completed_at, task_id),
+            )
+            changed = True
+    if changed:
+        record_learning_event(
+            profile_id,
+            "progressed",
+            "learning_task",
+            str(task_id),
+            {
+                "resource_id": resource_id,
+                "title": row["title"],
+                "status": status,
+            },
+        )
+    return learning_task_summary(profile_id, resource_id)
+
+
+def complete_learning_tasks(
+    profile_id: int | None,
+    resource_id: int,
+    task_types: list[str],
+) -> dict[str, Any] | None:
+    if profile_id is None:
+        return None
+    tasks = list_learning_tasks(profile_id, resource_id)
+    for task in tasks:
+        if task["task_type"] in task_types and task["status"] != "completed":
+            update_learning_task(task["id"], profile_id, True)
     return learning_task_summary(profile_id, resource_id)
 
 

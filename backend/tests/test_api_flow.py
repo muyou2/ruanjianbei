@@ -160,6 +160,8 @@ def test_complete_python_learning_loop():
         assert any(item["manual_review"] for item in report["detail"])
         assert report["mastery"]
         assert all("knowledge_point" in item for item in report["detail"])
+        assert report["learning_plan"]["completed"] == 3
+        assert report["learning_plan"]["progress"] == 60
 
         feedback = client.post(
             f"/api/resources/{resource['id']}/feedback",
@@ -179,4 +181,4 @@ def test_complete_python_learning_loop():
         assert dashboard["latest_evaluation"]["score"] == report["score"]
         assert dashboard["mastery"]
         assert dashboard["resource_feedback"]["helpful"] >= 1
-        assert dashboard["active_plan"]["completed"] == 1
+        assert dashboard["active_plan"]["completed"] == 3

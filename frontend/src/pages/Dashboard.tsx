@@ -55,6 +55,14 @@ export default function Dashboard() {
 
   const latestScore = signals?.latest_evaluation?.score
   const mastery = signals?.mastery || []
+  const taskLink = (task: any) => {
+    if (!plan) return '/resources'
+    if (task.task_type === 'quiz' || task.task_type === 'review') {
+      return `/evaluation?resource_id=${plan.resource_id}`
+    }
+    const tab = task.task_type === 'code' ? 'code_case' : task.task_type
+    return `/resources?resource=${plan.resource_id}&tab=${tab}`
+  }
   const eventLabel: Record<string, string> = {
     created: '创建学生画像',
     generated: '生成资源包',
@@ -114,9 +122,10 @@ export default function Dashboard() {
           </div>}
         </div>
         {plan ? <div className="mt-4 grid gap-2 md:grid-cols-5">
-          {plan.tasks.map(task => <button key={task.id} onClick={() => toggleTask(task.id, task.status !== 'completed')} className={`rounded-2xl border p-3 text-left transition ${task.status === 'completed' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-slate-50 hover:border-violet-200'}`}>
-            <div className="flex items-start gap-2">{task.status === 'completed' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />}<div><div className="text-xs font-black">{task.title}</div><div className="mt-1 text-[11px] text-slate-500">约 {task.estimated_minutes} 分钟</div></div></div>
-          </button>)}
+          {plan.tasks.map(task => <div key={task.id} className={`rounded-2xl border p-3 text-left transition ${task.status === 'completed' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-slate-50'}`}>
+            <div className="flex items-start gap-2">{task.status === 'completed' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />}<div className="min-w-0"><div className="text-xs font-black">{task.title}</div><div className="mt-1 text-[11px] text-slate-500">约 {task.estimated_minutes} 分钟</div></div></div>
+            <div className="mt-2 flex gap-1.5"><Link aria-label={`继续学习：${task.title}`} to={taskLink(task)} className="rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-violet-700 shadow-sm">继续学习</Link><button aria-label={`${task.status === 'completed' ? '撤销完成' : '标记完成'}：${task.title}`} onClick={() => toggleTask(task.id, task.status !== 'completed')} className={`rounded-lg px-2 py-1 text-[10px] font-bold ${task.status === 'completed' ? 'bg-white text-slate-500' : 'bg-violet-600 text-white'}`}>{task.status === 'completed' ? '撤销' : '完成'}</button></div>
+          </div>)}
         </div> : <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">暂无计划。先到资源中心生成一个学习主题。</div>}
       </Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">

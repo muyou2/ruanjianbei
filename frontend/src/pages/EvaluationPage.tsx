@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Award, CheckCircle2, Target } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { Button, Card, EmptyState, PageHeader } from '../components'
 import type { QuizQuestion } from '../types'
 
 export default function EvaluationPage() {
+  const [searchParams] = useSearchParams()
   const [resourceId, setResourceId] = useState<number | null>(null)
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -13,13 +15,14 @@ export default function EvaluationPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api<any>('/api/quizzes').then(data => {
+    const requested = searchParams.get('resource_id')
+    api<any>(`/api/quizzes${requested ? `?resource_id=${requested}` : ''}`).then(data => {
       if (data) {
         setResourceId(data.resource_id)
         setQuestions(data.questions)
       }
     }).catch(() => null)
-  }, [])
+  }, [searchParams])
 
   const submit = async () => {
     if (!resourceId) return
@@ -70,6 +73,7 @@ export default function EvaluationPage() {
               <div className="mt-5"><div className="flex items-center gap-2 font-black"><Target className="h-4 w-4 text-violet-600" />薄弱知识点</div><div className="mt-2 flex flex-wrap gap-2">{result.weak_points.length ? result.weak_points.map((item: string) => <span key={item} className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">{item}</span>) : <span className="text-sm text-emerald-600">暂无新增薄弱点</span>}</div></div>
               <div className="mt-5"><div className="flex items-center gap-2 font-black"><CheckCircle2 className="h-4 w-4 text-emerald-600" />下一步建议</div><ul className="mt-2 space-y-2 text-sm leading-6 text-slate-600">{result.suggestions.map((item: string) => <li key={item}>• {item}</li>)}</ul></div>
               <div className="mt-5 border-t border-slate-100 pt-4"><div className="font-black">本次更新后的知识点掌握度</div><div className="mt-3 space-y-2">{result.mastery?.map((item: any) => <div key={item.knowledge_point} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs"><span>{item.knowledge_point}</span><span className="font-bold text-violet-700">{item.mastery}%</span></div>)}</div></div>
+              {result.learning_plan && <div className="mt-5 rounded-2xl bg-violet-50 p-4"><div className="font-black text-violet-800">学习计划已自动推进</div><div className="mt-1 text-xs text-violet-700">针对性练习和测评复盘已完成，当前进度 {result.learning_plan.progress}%（{result.learning_plan.completed}/{result.learning_plan.total}）。</div><Link to={`/resources?resource=${result.learning_plan.resource_id}`} className="mt-3 inline-block rounded-xl bg-white px-3 py-2 text-xs font-bold text-violet-700">返回资源中心继续学习</Link></div>}
             </Card>
             <Card className="border-violet-100 bg-violet-50/80">
               <h3 className="font-black text-violet-800">画像写回结果</h3>

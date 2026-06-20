@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bot, CheckCircle2, Circle, Clock3, Download, GitBranch, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, consumeSSE } from '../api'
 import { Button, Card, EmptyState, Markdown, Mermaid, PageHeader } from '../components'
 import type { Citation, GenerationMeta, LearningPlan, Profile, Resource } from '../types'
@@ -32,6 +32,8 @@ const stageNames: Record<string, string> = {
 }
 
 export default function ResourcesPage() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [topic, setTopic] = useState('Pandas 数据清洗与分析综合实践')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [active, setActive] = useState('learning_path')
@@ -51,6 +53,19 @@ export default function ResourcesPage() {
   const [error, setError] = useState('')
   const [plan, setPlan] = useState<LearningPlan | null>(null)
 
+  const applyResource = (item: Resource) => {
+    setTopic(item.topic)
+    setResources(item.content)
+    setCitations(item.content.citations || [])
+    setWorkflow(item.content.workflow || [])
+    setReview(item.review)
+    setGeneration(item.content.generation_metadata || {})
+    setResourceId(item.id)
+    setFeedback(null)
+    setProgress(100)
+    setStage('已加载历史资源包')
+  }
+
   const load = async () => {
     const [current, packs, activePlan] = await Promise.all([
       api<Profile | null>('/api/profiles'),
@@ -60,6 +75,15 @@ export default function ResourcesPage() {
     setProfile(current)
     setHistory(packs)
     setPlan(activePlan)
+    if (packs.length) {
+      const requestedId = Number(searchParams.get('resource'))
+      const selected = packs.find(item => item.id === requestedId)
+        || packs.find(item => item.id === activePlan?.resource_id)
+        || packs[0]
+      applyResource(selected)
+      const requestedTab = searchParams.get('tab')
+      if (requestedTab && tabs.some(([key]) => key === requestedTab)) setActive(requestedTab)
+    }
   }
   useEffect(() => { load().catch(() => null) }, [])
 
@@ -84,7 +108,8 @@ export default function ResourcesPage() {
           setFeedback(null)
           setProgress(100); setStage(data.message); setWorkflow(data.workflow || [])
           api<LearningPlan>(`/api/learning/tasks?resource_id=${data.resource_id}`).then(setPlan).catch(() => null)
-          load()
+          setSearchParams({ resource: String(data.resource_id), tab: active })
+          api<Resource[]>('/api/resources').then(setHistory).catch(() => null)
         }
       })
     } catch (reason) {
@@ -95,16 +120,8 @@ export default function ResourcesPage() {
   }
 
   const openHistory = (item: Resource) => {
-    setTopic(item.topic)
-    setResources(item.content)
-    setCitations(item.content.citations || [])
-    setWorkflow(item.content.workflow || [])
-    setReview(item.review)
-    setGeneration(item.content.generation_metadata || {})
-    setResourceId(item.id)
-    setFeedback(null)
-    setProgress(100)
-    setStage('已加载历史资源包')
+    applyResource(item)
+    setSearchParams({ resource: String(item.id), tab: active })
     api<LearningPlan>(`/api/learning/tasks?resource_id=${item.id}`).then(setPlan).catch(() => null)
   }
 
@@ -124,6 +141,16 @@ export default function ResourcesPage() {
       body: JSON.stringify({ completed }),
     })
     setPlan(updated)
+  }
+  const openTask = (taskType: string) => {
+    if (!plan) return
+    if (taskType === 'quiz' || taskType === 'review') {
+      navigate(`/evaluation?resource_id=${plan.resource_id}`)
+      return
+    }
+    const target = taskType === 'code' ? 'code_case' : taskType
+    setActive(target)
+    setSearchParams({ resource: String(plan.resource_id), tab: target })
   }
   return (
     <>
@@ -173,9 +200,9 @@ export default function ResourcesPage() {
             <div className="mt-1 text-[11px] text-slate-500">{plan.topic}</div>
             <div className="mt-3 flex items-center justify-between text-xs"><span>{plan.completed}/{plan.total} 已完成</span><span className="font-bold text-violet-700">{plan.progress}% · 剩余约 {plan.remaining_minutes} 分钟</span></div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${plan.progress}%` }} /></div>
-            <div className="mt-4 space-y-2">{plan.tasks.map(task => <button key={task.id} onClick={() => toggleTask(task.id, task.status !== 'completed')} className={`w-full rounded-xl p-3 text-left ${task.status === 'completed' ? 'bg-emerald-50' : 'bg-slate-50 hover:bg-violet-50'}`}>
-              <div className="flex gap-2">{task.status === 'completed' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />}<div><div className="text-xs font-black">{task.title} · {task.estimated_minutes} 分钟</div><div className="mt-1 text-[11px] leading-5 text-slate-500">{task.description}</div></div></div>
-            </button>)}</div>
+            <div className="mt-4 space-y-2">{plan.tasks.map(task => <div key={task.id} className={`rounded-xl p-3 ${task.status === 'completed' ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+              <div className="flex gap-2">{task.status === 'completed' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />}<div className="min-w-0 flex-1"><div className="text-xs font-black">{task.title} · {task.estimated_minutes} 分钟</div><div className="mt-1 text-[11px] leading-5 text-slate-500">{task.description}</div><div className="mt-2 flex gap-2"><button aria-label={`打开任务：${task.title}`} onClick={() => openTask(task.task_type)} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-700 shadow-sm">{task.task_type === 'quiz' || task.task_type === 'review' ? '进入测评' : '打开内容'}</button><button aria-label={`${task.status === 'completed' ? '撤销完成' : '标记完成'}：${task.title}`} onClick={() => toggleTask(task.id, task.status !== 'completed')} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${task.status === 'completed' ? 'bg-white text-slate-500' : 'bg-violet-600 text-white'}`}>{task.status === 'completed' ? '撤销完成' : '标记完成'}</button></div></div></div>
+            </div>)}</div>
           </Card>}
           {review && <Card>
             <div className="flex items-center gap-2"><ShieldCheck className={review.passed ? 'text-emerald-600' : 'text-amber-600'} /><h3 className="font-black">规则审校报告</h3></div>

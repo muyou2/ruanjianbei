@@ -19,6 +19,7 @@ from .orchestrator import orchestrator, sse
 from .ppt_service import build_pptx
 from .repositories import (
     create_document,
+    complete_learning_tasks,
     delete_document,
     finish_document,
     activate_profile,
@@ -488,6 +489,11 @@ def evaluation_submit(payload: EvaluationSubmitRequest):
         detail,
     )
     mastery = update_mastery(profile.get("id") if profile else None, detail)
+    learning_plan = complete_learning_tasks(
+        profile.get("id") if profile else None,
+        payload.resource_id,
+        ["quiz", "review"],
+    )
     profile_after = profile or profile_before
     return response(
         {
@@ -503,6 +509,7 @@ def evaluation_submit(payload: EvaluationSubmitRequest):
             "profile_before": profile_before,
             "profile_after": profile_after,
             "profile_changes": profile_changes(profile_before, profile_after),
+            "learning_plan": learning_plan,
         },
         "评估完成，学生画像已动态更新",
     )
